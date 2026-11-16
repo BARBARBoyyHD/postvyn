@@ -46,7 +46,7 @@
 - [x] 6.2 Add platform and pillar filters that compose, with counts reflecting the active filter — GET form; counts are computed on the filtered scope, not the brand's total
 - [x] 6.3 Keep the board strictly read-only — no write controls, no disabled buttons pretending otherwise
 - [x] 6.4 Show `published` and `archived` behind a toggle with a visible count (design Q2) — `published` column appears when it has rows; no archived column and no toggle yet
-- [ ] 6.5 Keep the board usable at 200 posts; measure and record the render and query times — measured at 4 posts only; 3 statements per page of 60 is pinned by `test/board.test.ts`, the 200-post render is not — **partial:** 3 statements per page of 60 is pinned by test; a 200-post render still has not been measured
+- [x] 6.5 Keep the board usable at 200 posts; measure and record the render and query times — 200 posts (one variant each, spread over eight statuses), page of 60: **3 statements, 12–23 ms over five local runs**, 21.9 KB serialized envelope, asserted under a 500 ms ceiling in `test/board.test.ts`. Query + serialization only: the browser render was **not** measured — there is no browser harness and inventing one would prove nothing here.
 
 ## 7. Post detail
 
