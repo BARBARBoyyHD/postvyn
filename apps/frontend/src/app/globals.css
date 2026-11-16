@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/*
+ * Two token layers, on purpose (docs/naming + m1-identity design decision 8):
+ *
+ *   --color-zavron-*   the product's own identity. Chrome, buttons, links, landing, health.
+ *                      Never replaced by the active brand — this is Zavron's tool.
+ *   --color-brand-*    the ACTIVE brand's content palette. Post cards, caption previews.
+ *                      Set at runtime from brands.colors; falls back to Zavron values below.
+ *
+ * The hex values come from brands/zavron/brand.json. If that file changes, change these — not a
+ * component.
+ */
+@theme {
+  --color-zavron-accent: #ff4d12;
+  --color-zavron-accent-soft: #ff7a4d;
+  --color-zavron-bg0: #0d0d0d;
+  --color-zavron-bg1: #1c1c1c;
+  --color-zavron-line: #2a2a2a;
+  --color-zavron-ink: #f4f4f1;
+  --color-zavron-muted: #9a9a94;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-card: 14px;
+}
+
+:root {
+  /* Content surfaces default to the Zavron palette until a brand is active. */
+  --color-brand-accent: var(--color-zavron-accent);
+  --color-brand-bg0: var(--color-zavron-bg0);
+  --color-brand-bg1: var(--color-zavron-bg1);
+
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-zavron-bg0);
+}
+
+body {
+  background: var(--color-zavron-bg0);
+  color: var(--color-zavron-ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-zavron-accent);
+  color: #0d0d0d;
+}
+
+/* Focus ring that survives on dark without looking like a browser default. */
+:focus-visible {
+  outline: 2px solid var(--color-zavron-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}

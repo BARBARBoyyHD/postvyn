@@ -1,0 +1,51 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // The WORKER's name. Not the database's — that is `database_name` below.
+  "name": "postvyn",
+  "main": "vinext/server/fetch-handler",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Static assets come from the Vite build. `run_worker_first` routes everything through the Worker
+  // except hashed build output, which the asset layer serves directly.
+  "assets": {
+    "directory": "dist/client",
+    "html_handling": "none",
+    "not_found_handling": "none",
+    "binding": "ASSETS",
+    "run_worker_first": ["/*", "!/_next/static/*", "!/*/_next/static/*"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "postvyn-db",
+      // Placeholder — replace with the id from `wrangler d1 create postvyn-db` before deploying.
+      // Harmless locally, where D1 state is a file under .wrangler/.
+      "database_id": "fb0beba2-4cc0-46e6-a736-a158387230e2",
+      "migrations_dir": "db/migrations"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "postvyn-bucket"
+    }
+  ],
+
+  "vars": {
+    "PUBLISHING_ENABLED": "false",
+    "R2_PUBLIC_BASE": ""
+  }
+
+  // Deliberately absent, both with a reason:
+  //
+  // `images` — vinext init adds an IMAGES binding because its template optimises images. This project
+  // does no transformation (no sharp, no resvg: neither loads in workerd). A binding nothing calls is
+  // pure cost.
+  //
+  // `triggers.crons` — the Worker entry is vinext's fetch handler, which exports no `scheduled`. A
+  // cron trigger without one fails on every invocation, which is worse than no trigger. Trigger and
+  // handler land together in M4, and M0 has no jobs to claim.
+}

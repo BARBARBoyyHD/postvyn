@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+.vinext/
+.next/
+out/
+*.tsbuildinfo
+.opencode
+
+# cloudflare
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# secrets — never commit
+.env
+.env.*
+!.env.example
+
+# obsidian — keep config, drop per-machine state
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.trash/
+
+# os / editor
+.DS_Store
+Thumbs.db

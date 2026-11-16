@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: typecheck · lint · test · migrations
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version comes from `packageManager` in apps/frontend/package.json — one declaration, no drift.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/frontend/pnpm-lock.yaml
+
+      # The store cache above is what makes this bearable behind a deep-inspecting proxy.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Naming convention (migrations + seeds)
+        run: pnpm db:check
+
+      # The platform rules are generated from the content repo. When that checkout is not available
+      # the step is skipped rather than failed — but a stale committed copy still breaks the build
+      # locally, where the source *is* there.
+      - name: Platform rules are current
+        if: ${{ env.POSTVYN_SPECS_ROOT != '' }}
+        env:
+          POSTVYN_SPECS_ROOT: ${{ vars.POSTVYN_SPECS_ROOT }}
+        run: pnpm specs:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint (includes the tenancy boundary rule)
+        run: pnpm lint
+
+      - name: Tests (real workerd + real D1)
+        run: pnpm test
+
+      - name: Migrations apply from empty
+        run: |
+          set -o pipefail
+          pnpm exec wrangler d1 migrations apply postvyn-db --local | tee /tmp/migrate-1.log
+
+      - name: Migrations are re-runnable
+        run: |
+          set -o pipefail
+          pnpm exec wrangler d1 migrations apply postvyn-db --local | tee /tmp/migrate-2.log
+          if ! grep -q "No migrations to apply" /tmp/migrate-2.log; then
+            echo "::error::second migration run was not a no-op — a migration re-applied or the history is inconsistent"
+            exit 1
+          fi
+
+      # Dev-tooling advisories are reported but not fatal: the CLI's vendored deps are not shipped.
+      # Runtime dependencies are the gate.
+      - name: Runtime dependency audit
+        run: pnpm audit --prod --audit-level high
+
+      - name: No secrets required
+        run: echo "This pipeline reads no repository secrets — if it starts needing one, that is the bug."

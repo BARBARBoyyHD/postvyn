@@ -1,0 +1,27 @@
+{
+  // Test-only Worker config for `@cloudflare/vitest-pool-workers`.
+  //
+  // Deliberately minimal: the test runtime needs the D1 binding and the migration directory, and
+  // nothing else. Pointing tests at the deploy config would drag in the Static Assets and Images
+  // bindings, which exist for the deployed Worker and only add ways for the suite to fail for
+  // reasons unrelated to the code under test.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "postvyn-db",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "postvyn-db",
+      "database_id": "fb0beba2-4cc0-46e6-a736-a158387230e2",
+      "migrations_dir": "db/migrations"
+    }
+  ],
+  // Local R2 for the intake tests: uploads write objects, so the suite needs the binding to exist.
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "postvyn-bucket"
+    }
+  ]
+}

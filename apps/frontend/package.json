@@ -1,0 +1,72 @@
+{
+  "name": "postvyn",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "agent:push": "node tools/agent/push.mjs",
+    "agent:token": "node tools/agent-token.mjs",
+    "build": "next build",
+    "build:vinext": "vite build",
+    "db:check": "node db/check-names.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply postvyn-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply postvyn-db --remote",
+    "db:seed:local": "node db/run-seeds.mjs --local",
+    "db:seed:remote": "node db/run-seeds.mjs --remote",
+    "deploy:vinext": "vinext-cloudflare deploy --config dist/server/wrangler.json",
+    "dev": "next dev",
+    "dev:vinext": "vite dev --port 3001",
+    "lint": "eslint",
+    "specs:check": "node tools/specs/generate.mjs --check",
+    "specs:generate": "node tools/specs/generate.mjs",
+    "start": "next start",
+    "start:vinext": "wrangler dev --config dist/server/wrangler.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "next typegen && tsc --noEmit",
+    "user:create": "node tools/create-user.mjs"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "1.7.25",
+    "better-auth": "1.7.25",
+    "drizzle-orm": "0.45.4",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "resend": "6.38.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@better-auth/cli": "1.4.22",
+    "@cloudflare/vite-plugin": "^1.69.1",
+    "@cloudflare/vitest-plugin": "^1.8.2",
+    "@tailwindcss/postcss": "^4.3.5",
+    "@tailwindcss/turbopack": "4.3.3",
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vinext/cloudflare": "^1.3.4",
+    "@vitejs/plugin-rsc": "^0.5.39",
+    "drizzle-kit": "0.31.11",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "react-server-dom-webpack": "^19.3.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5",
+    "vinext": "^1.4.5",
+    "vite": "^8.3.8",
+    "vitest": "^4.1.12",
+    "wrangler": "4.162.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ]
+  },
+  "type": "module"
+}

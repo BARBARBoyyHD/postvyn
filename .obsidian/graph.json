@@ -1,0 +1,15 @@
+{
+  "collapse-filter": false,
+  "search": "-path:.obsidian -path:node_modules -path:dist -path:.vinext -path:attachments",
+  "showTags": true,
+  "showAttachments": false,
+  "showOrphans": true,
+  "colorGroups": [
+    { "query": "path:docs", "color": { "a": 1, "rgb": 14701138 } },
+    { "query": "path:journal", "color": { "a": 1, "rgb": 9302720 } },
+    { "query": "file:Home", "color": { "a": 1, "rgb": 6097975 } }
+  ],
+  "showArrow": true,
+  "nodeSizeMultiplier": 100,
+  "lineSizeMultiplier": 100
+}
