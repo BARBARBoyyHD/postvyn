@@ -49,4 +49,4 @@
 
 - [x] 7.1 Mark `US-026`…`US-035` and `US-051`/`US-052` in `docs/006-USER-STORIES.md` — verified against src/ 2026-11-17: 2 ☑ (US-026, US-030), 10 ◐
 - [x] 7.2 Record the double-publish test result in the journal, with the numbers
-- [ ] 7.3 Run `openspec validate m4-approval-and-jobs` and confirm the change is complete before archiving — **partial:** change validates; archiving waits until M5 fills the publisher port
+- [x] 7.3 Run `openspec validate m4-approval-and-jobs` and confirm the change is complete before archiving — validated 2026-11-17; m5 fills the publisher port (a3a20ac), archived with m6 6.3

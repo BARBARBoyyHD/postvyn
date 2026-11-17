@@ -39,6 +39,6 @@
 
 ## 6. Close-out
 
-- [ ] 6.1 Mark `US-046`…`US-049` in `docs/006-USER-STORIES.md`
-- [ ] 6.2 Move lessons to the second-brain vault; this repo keeps the runbook and the ADRs
+- [x] 6.1 Mark `US-046`…`US-049` in `docs/006-USER-STORIES.md` — verified against `src/` 2026-11-17: 3 ☑ (US-047 refusals, US-048 EXIF strip, US-049 purge), 1 ◐ (US-046: the presigned PUT has never been executed — no live upload, no real R2; m6 1.1 defers that to deploy), 0 blocked; Home.md tally 23→27 ☑, 28 ◐ unchanged
+- [x] 6.2 Move lessons to the second-brain vault; this repo keeps the runbook and the ADRs — done 2026-11-17 at the path as it actually exists: `D:/uwi/Projetcs/uwi-wiki/uwi-second-brain/03-Resources/Code/Postvyn build lessons.md` (8 distilled lessons: honest spec marks, Workers limits, tenancy without RLS, presigned PUT, cron pair, manual-only policy, read-back verify, park/resume) — indexed from `02-Areas/Code/Code MOC.md` and linked from that vault's `Queue Studio.md`; the runbook and the ADRs stay in this repo. Vault left uncommitted, as is this repo
 - [ ] 6.3 Run `openspec validate m6-media-and-cutover`, then archive every completed change in order

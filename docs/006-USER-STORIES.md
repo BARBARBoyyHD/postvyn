@@ -137,10 +137,10 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 | US-026 | As an operator I approve a variant with a slot | approval records user + content hash + time | Must | M4 | ☑ |
 | US-027 | As an operator I approve several items at once | bulk approve writes one audit row per item | Must | M4 | ☑ |
 | US-028 | As an operator an edit after approval invalidates it | variant returns to `review`; publish returns 409 | Must | M4 | ◐ — mismatch resets to `review` and 409s on the token path (tested); the upload button re-approves instead |
-| US-029 | As an operator a scheduled post ships with my laptop closed | cron tick claims and publishes; nothing depends on my machine | Must | M4 | ◐ — `runTick` + manual `/api/internal/tick` only; no `scheduled` entry, nothing fires unattended |
+| US-029 | As an operator a scheduled post ships with my laptop closed | cron tick claims and publishes; nothing depends on my machine | Must | M4 | ◐ — `scheduled` entry + `triggers.crons` exist and are tested (`src/worker.ts`, `wrangler.jsonc`; m4 4.1–4.3, `test/cron.test.ts`), so nothing depends on a laptop in code — but the Worker has never been deployed, so no cron has ever fired unattended; blocked on `wrangler login` (m0 5.4, TS-10) |
 | US-030 | As an operator nothing publishes twice | two concurrent ticks, one job → one post | Must | M4 | ☑ |
 | US-031 | As an operator a failed publish retries then parks | 3 attempts with backoff, then `failed` with the platform's own error | Must | M4 | ◐ — 3 attempts + backoff proven, but the terminal state is `dead`; `failed` is the uncertain state |
-| US-032 | As an operator slow platform processing does not lose the post | job parks as `awaiting_platform` and resumes on a later tick | Must | M4 | ◐ — park works; nothing moves `awaiting_platform` back to `queued`, so it never resumes |
+| US-032 | As an operator slow platform processing does not lose the post | job parks as `awaiting_platform` and resumes on a later tick | Must | M4 | ☑ — resume implemented (m5 4.3): `runTick` calls `resumeParked`, which moves `awaiting_platform` → `queued` once `run_after` has passed, back through `claim` so lease, attempts and kill switch all apply; "creates one container, not one per tick" tested in `test/publish-instagram.test.ts`. The park/resume cycle is fixture-proven — a live platform's timing is US-041's gap, not this story's |
 | US-033 | As an operator I can stop all publishing instantly | kill switch per workspace + global, checked at claim time; queue survives | Must | M4 | ◐ — both switches checked at claim and the queue survives (tested); no control surface for the workspace flag |
 | US-034 | As an operator I can see what is due in the next 24 hours | list with slot times in my timezone | Should | M4 | ☑ |
 | US-035 | As an operator every post has a readable history | append-only log: created, edited, approved, attempts, result | Should | M4 | ☑ |
@@ -168,10 +168,10 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
-| US-046 | As an operator I upload an image once | dedupe by content hash; public URL returned | Must | M6 | ☐ |
-| US-047 | As an operator a bad file is refused | MIME from magic bytes; SVG rejected outright | Must | M6 | ☐ |
-| US-048 | As an operator my photos do not leak location | metadata stripped before upload, re-validated server-side | Must | M6 | ☐ |
-| US-049 | As an operator unused media gets cleaned up | unreferenced non-postable media purged after 30 days | Could | M6 | ☐ |
+| US-046 | As an operator I upload an image once | dedupe by content hash; public URL returned | Must | M6 | ◐ — mint → record (dedupe on the stripped hash, one object, URL derived from `R2_PUBLIC_BASE`) is implemented and tested end-to-end against miniflare R2 + D1, and `/intake` drives it, but the presigned PUT has never been executed by any client — no live upload, no real R2; m6 1.1 defers that proof to deploy |
+| US-047 | As an operator a bad file is refused | MIME from magic bytes; SVG rejected outright | Must | M6 | ☑ |
+| US-048 | As an operator my photos do not leak location | metadata stripped before upload, re-validated server-side | Must | M6 | ☑ — the served object is stripped and re-checked in tests (strip is idempotent, stored size read back); the strip runs at record, so the original lives only at an unguessable landing key until then; video is stored as uploaded — stated non-goal (m6 1.4) |
+| US-049 | As an operator unused media gets cleaned up | unreferenced non-postable media purged after 30 days | Could | M6 | ☑ |
 
 ---
 
