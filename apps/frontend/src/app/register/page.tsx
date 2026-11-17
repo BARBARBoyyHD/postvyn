@@ -17,16 +17,12 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Create an account",
-  description: "Create a Postvyn account. The address is verified by email before the first sign-in.",
+  description: "Create a Postvyn account. Signing up signs you in — there is no email step.",
 };
 
 export default async function RegisterPage() {
   const env = await getBindings();
   const siteKey = env?.TURNSTILE_SITE_KEY ?? turnstileTestKeys.siteKey;
-
-  // Without these two the mailer falls back to an in-memory outbox (src/lib/email). Promising an
-  // inbox email that was never sent is exactly the kind of lie this product does not tell.
-  const mailConfigured = Boolean(env?.RESEND_API_KEY && env?.EMAIL_FROM);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -44,10 +40,11 @@ export default async function RegisterPage() {
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-16">
         <h1 className="text-2xl font-semibold tracking-tight text-zavron-ink">Create an account</h1>
         <p className="mt-2 text-sm text-zavron-muted">
-          Sign-up sends a verification link. The account stays locked until the address is confirmed.
+          Signing up creates the account and signs you in. No verification email is sent while mail
+          delivery is deferred.
         </p>
 
-        <RegisterForm siteKey={siteKey} mailConfigured={mailConfigured} />
+        <RegisterForm siteKey={siteKey} />
 
         {env ? null : (
           <p className="mt-8 text-xs leading-relaxed text-amber-300/80">

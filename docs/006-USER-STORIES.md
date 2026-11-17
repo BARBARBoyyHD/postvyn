@@ -88,7 +88,7 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
-| US-001 | As an operator I sign up with email and password | account created, verification email sent, cannot sign in until verified | Must | M1 | ◐ |
+| US-001 | As an operator I sign up with email and password | account created and signed in immediately; no verification email while mail is deferred | Must | M1 | ◐ |
 | US-002 | As an operator I sign in and stay signed in | session survives a browser restart; expiry ~30 days | Must | M1 | ☑ |
 | US-003 | As an operator I reset a forgotten password by email | single-use link, short TTL, uniform response (no account enumeration) | Must | M1 | ◐ |
 | US-004 | As an operator I sign out of every device | all sessions for the user revoked immediately | Should | M1 | ☐ |

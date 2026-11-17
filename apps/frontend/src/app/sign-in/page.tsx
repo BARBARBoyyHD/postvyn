@@ -36,7 +36,7 @@ export default function SignInPage() {
         const body = (await response.json().catch(() => ({}))) as { message?: string; code?: string };
         setError(
           body.code === "EMAIL_NOT_VERIFIED" || response.status === 403
-            ? "This address is not verified yet. Open the verification link that was emailed to you."
+            ? "That account cannot sign in yet. Ask the operator to check it."
             : (body.message ?? "That email and password do not match an account."),
         );
         return;
@@ -66,9 +66,6 @@ export default function SignInPage() {
 
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-16">
         <h1 className="text-2xl font-semibold tracking-tight text-zavron-ink">Sign in</h1>
-        <p className="mt-2 text-sm text-zavron-muted">
-          Accounts are verified by email before the first sign-in.
-        </p>
 
         <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">
           <label className="flex flex-col gap-2">

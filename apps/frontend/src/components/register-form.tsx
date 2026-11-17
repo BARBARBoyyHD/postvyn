@@ -5,13 +5,13 @@
  *
  * The endpoint is Better Auth's, behind the guard in `api/auth/[...all]`, so this form does the two
  * things the library cannot: collect a `name` (the column is NOT NULL and workspace provisioning
- * derives its name from it) and carry a Turnstile token, because sign-up sends mail to an address
- * the caller chose.
+ * derives its name from it) and carry a Turnstile token. Sign-up mints an account and hashes a
+ * password, so the guard stays in front of it even though it no longer sends mail.
  *
  * Turnstile tokens are single-use, so the widget is reset after every attempt. A retry with a
  * consumed token is a 403 that reads like a captcha failure the user did not cause.
  */
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
@@ -59,6 +59,7 @@ function loadTurnstile(): Promise<void> {
 
 interface AuthReply {
   message?: string;
+  code?: string;
   error?: string;
   detail?: string;
 }
@@ -69,6 +70,7 @@ function readAuthReply(value: unknown): AuthReply {
   const source: Record<string, unknown> = { ...value };
   const reply: AuthReply = {};
   if (typeof source.message === "string") reply.message = source.message;
+  if (typeof source.code === "string") reply.code = source.code;
   if (typeof source.error === "string") reply.error = source.error;
   if (typeof source.detail === "string") reply.detail = source.detail;
   return reply;
@@ -84,10 +86,16 @@ function signUpError(status: number, reply: AuthReply): string {
     }
     return "The captcha check failed. Try again.";
   }
-  if (status === 409) return "An account with that email already exists.";
-  if (status === 422) {
-    return reply.message ?? "The server refused those details. The password needs at least 10 characters.";
+  // Duplicates arrive as 422 with a code now that verification is off; 409 is kept for the guarded
+  // sign-up paths that still answer it.
+  if (
+    status === 409 ||
+    reply.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" ||
+    reply.code === "USER_ALREADY_EXISTS"
+  ) {
+    return "An account with that email already exists.";
   }
+  if (reply.code === "PASSWORD_TOO_SHORT") return "The password needs at least 10 characters.";
   if (status === 429) {
     return "Too many sign-up attempts from this address — three per five minutes. Try again shortly.";
   }
@@ -99,17 +107,15 @@ function signUpError(status: number, reply: AuthReply): string {
 
 interface RegisterFormProps {
   siteKey: string;
-  /** False when the server has no Resend key, so the verification link only reaches the dev outbox. */
-  mailConfigured: boolean;
 }
 
-export function RegisterForm({ siteKey, mailConfigured }: RegisterFormProps) {
+export function RegisterForm({ siteKey }: RegisterFormProps) {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [created, setCreated] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetId = useRef<string | null>(null);
   const token = useRef<string | null>(null);
@@ -182,34 +188,14 @@ export function RegisterForm({ siteKey, mailConfigured }: RegisterFormProps) {
         return;
       }
 
-      setCreated(true);
+      router.push("/health");
+      router.refresh();
     } catch {
       setError("Could not reach the server. Check your connection and try again.");
     } finally {
       setBusy(false);
       resetCaptcha();
     }
-  }
-
-  if (created) {
-    return (
-      <div role="status" className="mt-8 rounded-xl border border-zavron-line bg-zavron-bg1/50 p-6">
-        <p className="text-sm font-semibold text-zavron-ink">Account created.</p>
-        <p className="mt-2 text-sm leading-relaxed text-zavron-muted">
-          Check your email for the verification link — you cannot sign in until the address is
-          verified.
-          {mailConfigured
-            ? null
-            : " This server has no mail delivery configured, so nothing actually left it: the link was only recorded in its dev outbox. Ask the operator to verify the account by hand."}
-        </p>
-        <Link
-          href="/sign-in"
-          className="mt-4 inline-block text-sm font-medium text-zavron-ink underline decoration-zavron-line underline-offset-4 hover:decoration-zavron-accent"
-        >
-          Go to sign in
-        </Link>
-      </div>
-    );
   }
 
   return (

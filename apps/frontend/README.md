@@ -101,8 +101,9 @@ entered in the app and stored encrypted in `channel_credentials`.
 
 ## The first user
 
-Sign-up is public at `/register` (email verification required). To create the first account on a
-fresh database, create it on the machine that owns the database:
+Sign-up is public at `/register` and signs you in immediately — no verification email while mail
+delivery is deferred. To create the first account on a fresh database, create it on the machine that
+owns the database:
 
 ```bash
 pnpm user:create you@example.com "Your Name"            # local D1
