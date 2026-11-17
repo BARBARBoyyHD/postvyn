@@ -69,11 +69,14 @@ export default function LandingPage() {
             <Link href="/health" className="text-zavron-muted transition-colors hover:text-zavron-ink">
               Status
             </Link>
+            <Link href="/sign-in" className="text-zavron-muted transition-colors hover:text-zavron-ink">
+              Sign in
+            </Link>
             <Link
-              href="/sign-in"
+              href="/register"
               className="rounded-lg bg-zavron-accent px-4 py-2 font-medium text-[#0d0d0d] transition-colors hover:bg-zavron-accent-soft"
             >
-              Sign in
+              Sign up
             </Link>
           </nav>
         </div>
@@ -99,8 +102,14 @@ export default function LandingPage() {
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <Link
-              href="/sign-in"
+              href="/register"
               className="rounded-lg bg-zavron-accent px-5 py-3 text-sm font-semibold text-[#0d0d0d] transition-colors hover:bg-zavron-accent-soft"
+            >
+              Sign up
+            </Link>
+            <Link
+              href="/sign-in"
+              className="rounded-lg border border-zavron-line px-5 py-3 text-sm font-medium text-zavron-ink transition-colors hover:border-zavron-muted"
             >
               Sign in
             </Link>
@@ -109,12 +118,6 @@ export default function LandingPage() {
               className="rounded-lg border border-zavron-line px-5 py-3 text-sm font-medium text-zavron-ink transition-colors hover:border-zavron-muted"
             >
               See live status
-            </Link>
-            <Link
-              href="/register"
-              className="px-2 py-3 text-sm text-zavron-muted transition-colors hover:text-zavron-ink"
-            >
-              Create an account
             </Link>
           </div>
 
