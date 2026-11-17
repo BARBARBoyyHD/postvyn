@@ -1,7 +1,7 @@
 ---
 title: Postvyn — vault dashboard
 type: dashboard
-updated: 2026-11-15
+updated: 2026-11-17
 tags: [postvyn, home]
 ---
 
@@ -16,7 +16,7 @@ tags: [postvyn, home]
 | | |
 |---|---|
 | **Milestone** | `M3 — Authoring` **17/30** applied · `M2` **38/42** · `M1` **25/35** → [[004-PEP#3. Milestones & Phases\|PEP §3]] |
-| **Stories** | 73 tracked (58 user + 15 platform) · 49 Must · **7 ☑ · 8 ◐** → [[006-USER-STORIES]] |
+| **Stories** | 73 tracked (58 user + 15 platform) · 49 Must · **16 ☑ · 13 ◐** → [[006-USER-STORIES]] |
 | **Next action** | finish M3's editor (autosave, overrides, media picker) then M4 approval + job queue |
 | **Blocked on** | `wrangler login` before any deploy or remote migration · domain decision (OI-5) · Resend + Meta credentials → [[005-REQUIREMENTS]] |
 | **Open change** | `m0` **40/42** · `m1` **29/35** · `m2` **41/42** · `m3` **29/30** · `agent-intake` **28/28** |

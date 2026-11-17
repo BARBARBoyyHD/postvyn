@@ -4,7 +4,7 @@ type: spec
 doc: stories
 project: postvyn
 status: draft
-updated: 2026-11-15
+updated: 2026-11-17
 tags: [postvyn, spec, stories]
 aliases: [USER-STORIES, 006, stories]
 ---
@@ -117,15 +117,15 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
-| US-017 | As an operator I create a post with title, pillar and format | post saved in `drafting` | Must | M3 | ☐ |
-| US-018 | As an operator I add one variant per target platform | variants independent; media order per variant | Must | M3 | ☐ |
-| US-019 | As an operator the counter counts the way the platform does | X: a URL costs 23 chars regardless of length | Must | M3 | ☐ |
-| US-020 | As an operator I keep hashtags where the platform wants them | IG → first comment; Threads/X → in the caption; budget includes them | Must | M3 | ☐ |
-| US-021 | As an operator I attach media from the library | reorder for carousels; size/dimension warnings per platform | Must | M3 | ☐ |
-| US-022 | As an operator a spec error blocks me before publishing | hard error names the field and blocks; warning allows with a typed reason | Must | M3 | ☐ |
-| US-023 | As an operator my draft saves itself | autosave ≤5 s debounce; no lost work on refresh | Should | M3 | ☐ |
-| US-024 | As an operator I duplicate a post to another platform | variant copied with its caption, then edited independently | Could | M3 | ☐ |
-| US-025 | As an operator I see the brand's voice note while composing | voice text from the brand shown beside the editor | Could | M3 | ☐ |
+| US-017 | As an operator I create a post with title, pillar and format | post saved in `drafting` | Must | M3 | ☑ |
+| US-018 | As an operator I add one variant per target platform | variants independent; media order per variant | Must | M3 | ☑ |
+| US-019 | As an operator the counter counts the way the platform does | X: a URL costs 23 chars regardless of length | Must | M3 | ☑ |
+| US-020 | As an operator I keep hashtags where the platform wants them | IG → first comment; Threads/X → in the caption; budget includes them | Must | M3 | ◐ — X's count leaves its hashtags out |
+| US-021 | As an operator I attach media from the library | reorder for carousels; size/dimension warnings per platform | Must | M3 | ☑ |
+| US-022 | As an operator a spec error blocks me before publishing | hard error names the field and blocks; warning allows with a typed reason | Must | M3 | ◐ — approve/publish never check the verdict |
+| US-023 | As an operator my draft saves itself | autosave ≤5 s debounce; no lost work on refresh | Should | M3 | ◐ — refresh drops the pending save, no flush |
+| US-024 | As an operator I duplicate a post to another platform | variant copied with its caption, then edited independently | Could | M3 | ☑ |
+| US-025 | As an operator I see the brand's voice note while composing | voice text from the brand shown beside the editor | Could | M3 | ☑ |
 
 ---
 

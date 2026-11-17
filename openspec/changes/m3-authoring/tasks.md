@@ -42,6 +42,6 @@
 
 ## 6. Close-out
 
-- [ ] 6.1 Mark `US-017`…`US-025` in `docs/006-USER-STORIES.md` with their real state — **partial:** the editor's stories are implemented; `docs/006-USER-STORIES.md` is not yet re-marked
+- [x] 6.1 Mark `US-017`…`US-025` in `docs/006-USER-STORIES.md` with their real state — verified against `src/` 2026-11-17: 6 ☑, 3 ◐ (◐ = US-020 X budget omits hashtags, US-022 no spec gate at approve/publish, US-023 no flush on refresh)
 - [x] 6.2 Record in the journal which platform rule surprised us during implementation
 - [x] 6.3 Run `openspec validate m3-authoring` and confirm the change is complete before archiving
