@@ -13,13 +13,20 @@
  */
 import vinext from "vinext/server/fetch-handler";
 
-import { runScheduled } from "./db/scheduled";
+import { runMediaPurge } from "./db/media-purge";
+import { HYGIENE_CRON, runScheduled } from "./db/scheduled";
 import type { WorkerEnv } from "./lib/env";
 
 export default {
   fetch: vinext.fetch,
 
-  async scheduled(_controller: ScheduledController, env: WorkerEnv): Promise<void> {
+  async scheduled(controller: ScheduledController, env: WorkerEnv): Promise<void> {
+    // Two schedules, two jobs (m6 3.4): the publish tick every five minutes, and the media purge once
+    // a day. `runScheduled` stays untouched so the tick's clock is not quietly shared with a sweep.
+    if (controller.cron === HYGIENE_CRON) {
+      await runMediaPurge(env);
+      return;
+    }
     await runScheduled(env);
   },
 } satisfies ExportedHandler<WorkerEnv>;

@@ -45,11 +45,16 @@
     "R2_BUCKET": "postvyn-bucket"
   },
 
-  // Every five minutes: the cadence m4 chose for container polling — a Worker cannot sleep, so
-  // "wait for Meta" means "look again on the next tick" (m4 design decision 4). ~15 posts a week
-  // makes the frequency free, and a missed tick is harmless because the next one claims the same rows.
+  // Two schedules, two jobs. Every five minutes: the cadence m4 chose for container polling — a Worker
+  // cannot sleep, so "wait for Meta" means "look again on the next tick" (m4 design decision 4). ~15
+  // posts a week makes the frequency free, and a missed tick is harmless because the next one claims
+  // the same rows.
+  //
+  // 03:00 daily: the media purge (m6 3.4). `src/worker.ts` matches this string against `HYGIENE_CRON`
+  // in `src/db/scheduled.ts` to pick the job, so the two are one value written twice — change both or
+  // the sweep never runs.
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": ["*/5 * * * *", "0 3 * * *"]
   }
 
   // Deliberately absent, with a reason:

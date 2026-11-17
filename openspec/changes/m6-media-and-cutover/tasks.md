@@ -18,10 +18,10 @@
 
 ## 3. Hygiene
 
-- [ ] 3.1 Purge sweep: non-postable media and unreferenced objects past the retention window
-- [ ] 3.2 Dry-run mode listing exactly what would be deleted, with sizes
-- [ ] 3.3 Never delete media referenced by a variant; never delete published media — both asserted by test
-- [ ] 3.4 Run the sweep on the cron trigger, beside the publish tick
+- [x] 3.1 Purge sweep: non-postable media and unreferenced objects past the retention window — `src/db/media-purge.ts`: a candidate is `postable = 0` **and** older than `MEDIA_RETENTION_MS` (30 days, `docs/003-ITA.md` §5 "Retention") **and** named by no variant's `media_ids`; plus any `media/<workspace>/` object no row names (an unrecorded upload, a deleted workspace's leftovers). Row first, object second, so a half-delete never leaves a row pointing at a 404; "deletes a non-postable row and its object once it is past the window", "deletes an object no row names, once the window has passed", "leaves a postable asset alone even when nothing references it" in `test/media-purge.test.ts`
+- [x] 3.2 Dry-run mode listing exactly what would be deleted, with sizes — same code path, `mediaPurge(env).sweep(ctx, { dryRun: true })` / `runMediaPurge(env, { dryRun: true })` answers `{ reason, key, bytes }[]` and deletes nothing; the plan is logged in one line in both modes ("deletion is recorded before it happens"). No route: `003-ITA.md` §4.3 lists no purge surface and no runbook step needs one, so the operator entry point is the function; "lists the same keys and sizes and deletes nothing", "records the plan before it deletes, and says nothing when there is nothing to do" in `test/media-purge.test.ts`
+- [x] 3.3 Never delete media referenced by a variant; never delete published media — both asserted by test — the reference check runs in the listing *and* again inside the `delete`, so a variant that gains the media between the two keeps its bytes (the row is reported `skipped`, never `deleted`); a published post's media is its variant's media, and the variant is what the check reads — "leaves media a variant still points at, however old it is", "leaves the media of a published post alone" in `test/media-purge.test.ts`
+- [x] 3.4 Run the sweep on the cron trigger, beside the publish tick — second cron `"0 3 * * *"` in `wrangler.jsonc`, matched against `HYGIENE_CRON` (`src/db/scheduled.ts`) in `src/worker.ts`'s `scheduled` so `runMediaPurge` runs instead of `runScheduled`; daily because the window is days, and an idle sweep logs nothing — "runs over every workspace on the cron", "…and says nothing when there is nothing to do" in `test/media-purge.test.ts`
 
 ## 4. Runbook
 

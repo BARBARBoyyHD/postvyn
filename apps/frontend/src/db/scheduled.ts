@@ -13,6 +13,15 @@ import type { Publisher } from "@/publishers/port";
 import { liveTransport, type Transport } from "@/publishers/transport";
 import type { WorkerEnv } from "@/lib/env";
 
+/**
+ * The hygiene schedule. The Worker tells the two crons apart by this string, which Cloudflare hands
+ * back as `controller.cron`, so `wrangler.jsonc`'s `triggers.crons` must list it verbatim.
+ *
+ * Daily, not every five minutes: the retention window is measured in days, and a sweep that runs 288
+ * times a day to find nothing is a cost with no product behind it (design.md decision 5).
+ */
+export const HYGIENE_CRON = "0 3 * * *";
+
 export interface ScheduledReport {
   tick: TickReport;
   tokens: TokenRefreshReport;
