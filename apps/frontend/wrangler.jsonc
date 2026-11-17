@@ -26,7 +26,7 @@
       "database_id": "fb0beba2-4cc0-46e6-a736-a158387230e2",
       // Per-binding remote proxy (wrangler ≥4, GA — no experimental flag): local dev talks to the
       // DEPLOYED database while the Worker itself still runs in workerd on this machine, so HMR and
-      // `.dev.vars` keep working. `remote: false` switches back to the local `.wrangler/` file.
+      // `.env` keep working. `remote: false` switches back to the local `.wrangler/` file.
       "remote": true,
       "migrations_dir": "db/migrations"
     }

@@ -284,6 +284,10 @@ pnpm exec wrangler deploy
 
 Three gates before any commit: `typecheck`, `lint`, `test`. No exceptions for "small changes".
 
+**Secrets and local config live in `apps/frontend/.env`** — one gitignored file, template is
+`.env.example`. `pnpm dev`, `pnpm dev:next` and vitest all read it (wrangler loads it when no `.dev.vars`
+exists, so don't create one). Edit `.env`, restart, done — there is nothing to sync.
+
 **Two traps that will waste an afternoon if forgotten** (both in ITA §9):
 
 - **pnpm 10 blocks postinstall scripts.** `workerd` needs its own to fetch the binary — without it

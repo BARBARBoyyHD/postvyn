@@ -53,7 +53,7 @@ export interface WorkerEnv {
 export function requireAuthEnv(env: WorkerEnv): { secret: string; baseURL: string } {
   if (!env.BETTER_AUTH_SECRET) {
     throw new Error(
-      "BETTER_AUTH_SECRET is not set. Local: add it to .dev.vars. Production: `wrangler secret put BETTER_AUTH_SECRET`.",
+      "BETTER_AUTH_SECRET is not set. Local: add it to apps/frontend/.env. Production: `wrangler secret put BETTER_AUTH_SECRET`.",
     );
   }
   return {

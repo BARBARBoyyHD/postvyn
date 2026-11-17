@@ -366,7 +366,7 @@ Verified today; they cost hours if rediscovered mid-build:
 
 ### 13.6 What not to do
 
-- **Never paste a secret in chat.** Values go in `.dev.vars` / `wrangler secret`; if it's in a
+- **Never paste a secret in chat.** Values go in `apps/frontend/.env` / `wrangler secret`; if it's in a
   message it's in a transcript, and it needs rotating.
 - **Don't edit the vault while the importer runs.** Freeze `tools/publish` at a git tag before M2 and
   import from that tag.

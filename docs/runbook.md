@@ -157,7 +157,7 @@ channel", which rewrites that channel's row under the new key:
    pnpm exec wrangler secret put TOKEN_ENCRYPTION_KEY          # the base64 bytes
    pnpm exec wrangler secret put TOKEN_ENCRYPTION_KEY_VERSION  # e.g. 2
    ```
-   Locally the same two lines go into `.dev.vars`.
+   Locally the same two lines go into `apps/frontend/.env`.
 3. Reconnect every channel (§2.1). Until you do, the board shows `reconnect required` — that is the
    checklist, not a surprise.
 4. Verify no row is left on the old key:
