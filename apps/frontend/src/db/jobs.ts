@@ -78,6 +78,8 @@ export function jobs(env: Bindings) {
           state: "claimed",
           leaseUntil: now + LEASE_MS,
           attempts: sql`${s.jobs.attempts} + 1`,
+          attemptStartedAt: now,
+          attemptFinishedAt: null,
           updatedAt: now,
         })
         .where(
@@ -104,7 +106,7 @@ export function jobs(env: Bindings) {
     async reclaimExpired(now = Date.now()) {
       const result = await db
         .update(s.jobs)
-        .set({ state: "queued", leaseUntil: null, updatedAt: now })
+        .set({ state: "queued", leaseUntil: null, attemptFinishedAt: now, updatedAt: now })
         .where(and(eq(s.jobs.state, "claimed"), lte(s.jobs.leaseUntil, now)))
         .returning({ id: s.jobs.id, attempts: s.jobs.attempts });
 
@@ -124,33 +126,60 @@ export function jobs(env: Bindings) {
 
     /** Terminal, non-retryable: the reason is a human problem (content changed) or a policy refusal. */
     async dead(id: string, reason: string) {
+      const now = Date.now();
       await db
         .update(s.jobs)
-        .set({ state: "dead", leaseUntil: null, lastError: reason, updatedAt: Date.now() })
+        .set({ state: "dead", leaseUntil: null, lastError: reason, attemptFinishedAt: now, updatedAt: now })
         .where(eq(s.jobs.id, id));
     },
 
     async complete(id: string, detail?: unknown) {
+      const now = Date.now();
       await db
         .update(s.jobs)
-        .set({ state: "done", leaseUntil: null, lastError: null, updatedAt: Date.now() })
+        .set({ state: "done", leaseUntil: null, lastError: null, attemptFinishedAt: now, updatedAt: now })
         .where(eq(s.jobs.id, id));
       void detail;
     },
 
-    /** Park until the platform finishes. Not a retry: the attempt that parked it keeps its count. */
-    async park(id: string, reason: string, resumeAfterMs: number) {
+    /**
+     * Park until the platform finishes. Not a retry: the attempt that parked it keeps its count.
+     *
+     * The container id rides in the payload, so the next tick polls the post it already created
+     * instead of creating a second one — a duplicate post cannot be undone from this side.
+     */
+    async park(
+      id: string,
+      options: { reason: string; resumeAfterMs: number; containerId?: string },
+    ) {
       const now = Date.now();
+      const containerId = options.containerId ?? null;
+
       await db
         .update(s.jobs)
         .set({
           state: "awaiting_platform",
           leaseUntil: null,
-          lastError: reason,
-          runAfter: now + resumeAfterMs,
+          lastError: options.reason,
+          runAfter: now + options.resumeAfterMs,
+          attemptFinishedAt: now,
           updatedAt: now,
+          payload: sql`case when ${containerId} is null then ${s.jobs.payload}
+            else json_set(${s.jobs.payload}, '$.containerId', ${containerId}) end`,
         })
         .where(eq(s.jobs.id, id));
+    },
+
+    /**
+     * `awaiting_platform` → `queued` once the platform's window has passed (US-032: a parked job
+     * never resumed). It goes back through `claim` rather than being published here, so the lease,
+     * the attempt count and the kill switch all apply to a resume exactly as they do to a first try.
+     */
+    async resumeParked(now = Date.now()) {
+      await db
+        .update(s.jobs)
+        .set({ state: "queued", updatedAt: now })
+        .where(and(eq(s.jobs.state, "awaiting_platform"), lte(s.jobs.runAfter, now)));
     },
 
     /**
@@ -164,7 +193,13 @@ export function jobs(env: Bindings) {
       if (options.ambiguous) {
         await db
           .update(s.jobs)
-          .set({ state: "failed", leaseUntil: null, lastError: `uncertain: ${message}`, updatedAt: now })
+          .set({
+            state: "failed",
+            leaseUntil: null,
+            lastError: `uncertain: ${message}`,
+            attemptFinishedAt: now,
+            updatedAt: now,
+          })
           .where(eq(s.jobs.id, id));
         return { state: "failed" as const, retryIn: null };
       }
@@ -172,7 +207,7 @@ export function jobs(env: Bindings) {
       if (row.attempts >= MAX_ATTEMPTS) {
         await db
           .update(s.jobs)
-          .set({ state: "dead", leaseUntil: null, lastError: message, updatedAt: now })
+          .set({ state: "dead", leaseUntil: null, lastError: message, attemptFinishedAt: now, updatedAt: now })
           .where(eq(s.jobs.id, id));
         return { state: "dead" as const, retryIn: null };
       }
@@ -181,7 +216,14 @@ export function jobs(env: Bindings) {
       const delay = row.attempts * row.attempts * 60_000;
       await db
         .update(s.jobs)
-        .set({ state: "queued", leaseUntil: null, lastError: message, runAfter: now + delay, updatedAt: now })
+        .set({
+          state: "queued",
+          leaseUntil: null,
+          lastError: message,
+          runAfter: now + delay,
+          attemptFinishedAt: now,
+          updatedAt: now,
+        })
         .where(eq(s.jobs.id, id));
       return { state: "queued" as const, retryIn: delay };
     },

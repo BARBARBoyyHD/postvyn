@@ -7,8 +7,10 @@
  *
  * What happens here before the library sees the request:
  *
- * - **Turnstile** on the two endpoints that send mail to a caller-chosen address. Without it, a
- *   verified sending domain is a free mail-bombing primitive.
+ * - **Turnstile** on sign-up and on the two endpoints that send mail to a caller-chosen address.
+ *   Sign-up no longer sends anything (verification is off while mail is deferred), but it stays
+ *   guarded: it creates an account and hashes a password, and it regains a mail send the day
+ *   verification comes back.
  * - **Failed sign-ins are audited**, because a credential-stuffing run that leaves no trace is a run
  *   nobody can respond to. Recorded only when the address belongs to a known user: `activity_log`
  *   requires a workspace, and inventing one for an unknown address would be worse than the gap.

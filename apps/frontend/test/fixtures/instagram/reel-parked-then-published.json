@@ -1,0 +1,15 @@
+{
+  "replies": [
+    { "status": 200, "body": { "id": "container-reel-1" } },
+    { "status": 200, "body": { "id": "container-reel-1", "status_code": "IN_PROGRESS" } },
+    { "status": 200, "body": { "id": "container-reel-1", "status_code": "FINISHED" } },
+    { "status": 200, "body": { "id": "17900000000000001" } },
+    {
+      "status": 200,
+      "body": {
+        "id": "17900000000000001",
+        "permalink": "https://www.instagram.com/reel/CzAbCdEfGhI/"
+      }
+    }
+  ]
+}

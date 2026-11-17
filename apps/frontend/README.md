@@ -77,6 +77,10 @@ pnpm exec wrangler secret put BETTER_AUTH_SECRET
 pnpm exec wrangler secret put TOKEN_ENCRYPTION_KEY
 pnpm exec wrangler secret put RESEND_API_KEY
 pnpm exec wrangler secret put CRON_SECRET
+# uploads are signed client-side to R2's S3 endpoint, so the Worker needs an S3 key (M6)
+pnpm exec wrangler secret put R2_ACCOUNT_ID
+pnpm exec wrangler secret put R2_ACCESS_KEY_ID
+pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY
 ```
 
 **`TOKEN_ENCRYPTION_KEY` is not a normal secret.** It decrypts every stored platform token. Losing it
@@ -97,7 +101,9 @@ entered in the app and stored encrypted in `channel_credentials`.
 
 ## The first user
 
-There is no public sign-up. Create the account on the machine that owns the database:
+Sign-up is public at `/register` and signs you in immediately — no verification email while mail
+delivery is deferred. To create the first account on a fresh database, create it on the machine that
+owns the database:
 
 ```bash
 pnpm user:create you@example.com "Your Name"            # local D1

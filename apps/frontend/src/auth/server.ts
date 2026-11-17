@@ -40,18 +40,13 @@ export function createAuth(env: WorkerEnv) {
 
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
+      // Resend is deferred, so a verification mail cannot be delivered; requiring one would lock
+      // every new account out. Sign-up therefore issues a session immediately - flip this (and
+      // restore the `emailVerification` block) when mail is wired.
+      requireEmailVerification: false,
       minPasswordLength: 10,
       sendResetPassword: async ({ user, url }) => {
         await mail.sendPasswordReset({ to: user.email, url });
-      },
-    },
-
-    emailVerification: {
-      sendOnSignUp: true,
-      autoSignInAfterVerification: true,
-      sendVerificationEmail: async ({ user, url }) => {
-        await mail.sendVerification({ to: user.email, url });
       },
     },
 

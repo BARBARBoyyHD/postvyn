@@ -10,8 +10,32 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { createDb, type Bindings } from "@/db/client";
 import * as s from "@/db/schema";
 import { jobs } from "@/db/jobs";
+import { specGate } from "@/db/spec-gate";
 import { variantHash } from "@/lib/approval";
 import type { WorkspaceContext } from "@/lib/context";
+import type { SpecIssue } from "@/lib/specs/validate";
+
+/**
+ * What approving one variant produced.
+ *
+ * Errors are values here because the batch endpoint reports per-item outcomes: an item that cannot be
+ * approved is an answer, not an exception that cancels the eleven beside it.
+ */
+export type ApproveResult =
+  | { ok: true; approvalId: string; hash: string; jobId: string; slotAt: number }
+  | { ok: false; error: "not_found" }
+  | { ok: false; error: "reapproval_required"; expected: string; current: string }
+  | { ok: false; error: "spec_blocked"; violations: SpecIssue[] }
+  | { ok: false; error: "internal_error" };
+
+export type BatchItemResult = { id: string } & ApproveResult;
+
+export interface BatchReport {
+  slotAt: number;
+  approved: number;
+  failed: number;
+  items: BatchItemResult[];
+}
 
 export function approvals(env: Bindings) {
   const db = createDb(env.DB);
@@ -30,17 +54,38 @@ export function approvals(env: Bindings) {
     /**
      * Approve for a slot. The slot is the schedule; the job's earliest run time comes from it, never from
      * the moment of approving — otherwise "approve for tomorrow 09:00" publishes at lunchtime today.
+     *
+     * Two checks stand between the request and the approval row, because both are cheaper to answer now
+     * than after a post has shipped:
+     *  - `expectedHash`, when the caller sends one, is the content the operator was looking at;
+     *  - the spec verdict is recomputed from the row, so a `blocked` variant never acquires an approval.
      */
     async approve(
       ctx: WorkspaceContext,
       variantId: string,
-      input: { slotAt: number; note?: string | null },
-    ) {
+      input: { slotAt: number; note?: string | null; expectedHash?: string },
+    ): Promise<ApproveResult> {
       const found = await loadScoped(ctx, variantId);
-      if (!found) return null;
+      if (!found) return { ok: false, error: "not_found" };
 
       const hash = await variantHash(found.variant);
+      if (input.expectedHash !== undefined && input.expectedHash !== hash) {
+        return { ok: false, error: "reapproval_required", expected: input.expectedHash, current: hash };
+      }
+
+      const gate = await specGate(env).check(found.variant);
+      if (!gate.ok) return { ok: false, error: "spec_blocked", violations: gate.violations };
+
       const now = Date.now();
+
+      // The gate just recomputed a derived column: keep the board from showing a verdict the row no
+      // longer earns. Only when it disagrees, so an ordinary approve stays one statement cheaper.
+      if (gate.state !== found.variant.specState || gate.specVersion !== found.variant.specVersion) {
+        await db
+          .update(s.variants)
+          .set({ specState: gate.state, specVersion: gate.specVersion })
+          .where(eq(s.variants.id, variantId));
+      }
 
       // A previous approval stops counting the moment a new one arrives: revoked, not deleted, so the
       // history still shows what was approved when.
@@ -81,7 +126,40 @@ export function approvals(env: Bindings) {
         createdAt: now,
       });
 
-      return { approvalId, hash, jobId: job.id, slotAt: input.slotAt };
+      return { ok: true, approvalId, hash, jobId: job.id, slotAt: input.slotAt };
+    },
+
+    /**
+     * Approve a list for one slot.
+     *
+     * One item's failure is an outcome, not an exception: an operator clearing a day's queue must not
+     * lose eleven approvals because one card was stale. `approve()` writes the audit row, so each
+     * success leaves exactly one `variant.approved` entry naming its own variant.
+     */
+    async approveBatch(
+      ctx: WorkspaceContext,
+      items: readonly { id: string; hash?: string }[],
+      input: { slotAt: number; note?: string | null },
+    ): Promise<BatchReport> {
+      const results: BatchItemResult[] = [];
+
+      for (const item of items) {
+        try {
+          const outcome = await this.approve(ctx, item.id, {
+            slotAt: input.slotAt,
+            note: input.note,
+            expectedHash: item.hash,
+          });
+          results.push({ id: item.id, ...outcome });
+        } catch (error) {
+          // Named per item and logged once: a batch that reported "something failed" would be useless.
+          console.error("[approvals] batch item failed", item.id, error);
+          results.push({ id: item.id, ok: false, error: "internal_error" });
+        }
+      }
+
+      const approved = results.filter((item) => item.ok).length;
+      return { slotAt: input.slotAt, approved, failed: results.length - approved, items: results };
     },
 
     /** The approval that currently counts, if any. */

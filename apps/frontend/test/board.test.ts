@@ -59,6 +59,68 @@ async function seedPosts(brandId: string, statuses: string[], prefix: string) {
   await env.DB.batch(statements);
 }
 
+/** The scale the product claims: 200 posts, a page of 60. */
+const SCALE_POSTS = 200;
+const SCALE_PAGE = 60;
+/** Generous on purpose: this catches an N+1 or a lost index, not a slow shared CI machine. */
+const PAGE_READ_BUDGET_MS = 500;
+const SCALE_STATUSES = [
+  "idea",
+  "researched",
+  "drafting",
+  "review",
+  "approved",
+  "scheduled",
+  "published",
+  "failed",
+];
+/** Statements per `batch` call, kept modest because D1's batch cap is a deployment limit, not ours. */
+const SEED_CHUNK = 50;
+
+/** Posts with one variant each, spread across every status, so a page of 60 spans columns. */
+async function seedManyPosts(brandId: string, count: number, channelId: string) {
+  for (let start = 0; start < count; start += SEED_CHUNK) {
+    const statements: ReturnType<typeof env.DB.prepare>[] = [];
+    for (let i = start; i < Math.min(start + SEED_CHUNK, count); i += 1) {
+      statements.push(
+        env.DB.prepare(
+          "insert into posts (id, workspace_id, brand_id, title, format, status, pillar) values (?, ?, ?, ?, ?, ?, ?)",
+        ).bind(
+          `s-${i}`,
+          WS,
+          brandId,
+          `scale ${i}`,
+          "single",
+          SCALE_STATUSES[i % SCALE_STATUSES.length],
+          i % 2 ? "data" : "story",
+        ),
+        env.DB.prepare(
+          "insert into variants (id, post_id, channel_id, caption, hashtags, media_ids) values (?, ?, ?, ?, '[]', '[]')",
+        ).bind(`s-${i}-v`, `s-${i}`, channelId, `caption ${i} `.repeat(10)),
+      );
+    }
+    await env.DB.batch(statements);
+  }
+}
+
+/** Same repository, with D1 wrapped so each `prepare`/`batch` is counted. */
+function countingRepository() {
+  let statements = 0;
+  const counting = {
+    DB: new Proxy(env.DB as unknown as Record<string, unknown>, {
+      get(target, prop) {
+        if (prop === "prepare" || prop === "batch") statements += 1;
+        const value = Reflect.get(target, prop, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as unknown as typeof env.DB,
+  };
+  return {
+    repo: repository(counting as unknown as { DB: typeof env.DB }),
+    statements: () => statements,
+  };
+}
+
 describe("the board is scoped to one brand", () => {
   it("returns only the requested brand's posts", async () => {
     await seedPosts(BRAND_A, ["review", "review"], "a");
@@ -134,22 +196,40 @@ describe("the query count does not grow with the page", () => {
   it("issues a constant number of statements for a full page", async () => {
     await seedPosts(BRAND_A, Array.from({ length: 20 }, () => "review"), "a");
 
-    let statements = 0;
-    const counting = {
-      DB: new Proxy(env.DB as unknown as Record<string, unknown>, {
-        get(target, prop) {
-          if (prop === "prepare" || prop === "batch") statements += 1;
-          const value = Reflect.get(target, prop, target);
-          return typeof value === "function" ? value.bind(target) : value;
-        },
-      }) as unknown as typeof env.DB,
-    };
-
-    const counted = repository(counting as unknown as { DB: typeof env.DB });
-    const board = await counted.listBoard(ctx, { brandId: BRAND_A, limit: 20 });
+    const counted = countingRepository();
+    const board = await counted.repo.listBoard(ctx, { brandId: BRAND_A, limit: 20 });
 
     expect(board.posts).toHaveLength(20);
     // counts + page + variants = 3, asserted rather than reviewed.
+    expect(counted.statements()).toBe(3);
+  });
+});
+
+describe("the board stays usable at 200 posts", () => {
+  it("reads a page of 60 in three statements, inside the time budget", async () => {
+    await seedManyPosts(BRAND_A, SCALE_POSTS, "chan-a");
+    const counted = countingRepository();
+
+    // Unmeasured warm-up: the first D1 call in a fresh isolate pays statement compilation, which is
+    // not what an operator waits for when they open a board the server has already served once.
+    await counted.repo.listBoard(ctx, { brandId: BRAND_A, limit: SCALE_PAGE });
+    const before = counted.statements();
+
+    // Query + serialization is the data path the board page waits on. `performance.now()` is clamped
+    // to a few milliseconds in workerd, so the number is coarse — plenty for a ceiling this wide.
+    const started = performance.now();
+    const board = await counted.repo.listBoard(ctx, { brandId: BRAND_A, limit: SCALE_PAGE });
+    const serialized = JSON.stringify(board);
+    const elapsedMs = performance.now() - started;
+    const statements = counted.statements() - before;
+
+    expect(board.posts).toHaveLength(SCALE_PAGE);
     expect(statements).toBe(3);
+    expect(elapsedMs).toBeLessThan(PAGE_READ_BUDGET_MS);
+
+    // Recorded here because the number is the point: it belongs in tasks.md, not in a reviewer's head.
+    console.log(
+      `board at scale: ${SCALE_POSTS} posts, page of ${SCALE_PAGE}, ${statements} statements, ${elapsedMs.toFixed(1)}ms, ${serialized.length} bytes serialized`,
+    );
   });
 });

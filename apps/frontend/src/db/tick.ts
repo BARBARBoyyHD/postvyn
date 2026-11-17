@@ -15,17 +15,42 @@
  *  - the approval is verified **at publish time**, not trusted from when it was granted;
  *  - an ambiguous result is recorded as uncertain and never retried, because a duplicate post cannot be
  *    undone from this side.
+ *
+ * The adapter is resolved here, from the channel's platform (`src/publishers/registry.ts`), because this
+ * is the first place that knows which platform a variant is going to. Tests inject one publisher; the
+ * production call sites inject nothing.
  */
 import { eq } from "drizzle-orm";
 
 import { createDb, type Bindings } from "./client";
 import * as s from "./schema";
+import { sendPublishFailureEmail } from "./alerts";
 import { approvals } from "./approvals";
+import { credentialStore } from "./credentials";
 import { jobs, LEASE_MS } from "./jobs";
-import type { Publisher, PublishOutcome } from "@/publishers/port";
+import { mediaResolver } from "./media";
+import { specGate } from "./spec-gate";
+import { probeMedia } from "@/publishers/media-probe";
+import { publisherFor } from "@/publishers/registry";
+import { liveTransport, type Transport } from "@/publishers/transport";
+import {
+  isCostProblem,
+  type PlatformError,
+  type Publisher,
+  type Preview,
+  type PublishInput,
+  type PublishResult,
+} from "@/publishers/port";
+import { systemContext } from "@/lib/context";
+import type { Mailer } from "@/lib/email";
 import type { WorkerEnv } from "@/lib/env";
+import type { SpecIssue } from "@/lib/specs/validate";
 
-export type Verdict = PublishOutcome["state"] | "reapproval_required" | "none";
+export type Verdict =
+  | PublishResult["status"]
+  | "reapproval_required"
+  | "spec_blocked"
+  | "none";
 
 export interface VariantOutcome {
   variantId: string;
@@ -33,8 +58,153 @@ export interface VariantOutcome {
   verdict: Verdict;
   detail?: string;
   url?: string | null;
+  /** The platform's own code and message, when there was one — stored and shown verbatim. */
+  platformError?: PlatformError;
+  /** Only for `spec_blocked`: the platform rules the content fails, named individually. */
+  violations?: SpecIssue[];
   /** Only for `awaiting_platform`: how long the caller should wait before looking again. */
   resumeAfterMs?: number;
+  /** Only for `awaiting_platform`: the container the next tick polls instead of creating another. */
+  containerId?: string;
+  /** What the send was estimated to cost; null for a platform that does not meter (free ones). */
+  estimatedCostUsd?: number | null;
+}
+
+/**
+ * What a publish needs besides the variant id.
+ *
+ * `publisher` exists so a test can answer without a network, and is absent in production: the adapter
+ * is resolved from the channel's platform. `resume` is set by the tick when it picks a parked job back
+ * up — the container already exists, so publishing again would post twice.
+ */
+export interface PublishOptions {
+  publisher?: Publisher;
+  /**
+   * Where the reachability probe sends its HEAD, and where a test injects a recorder. Production
+   * passes nothing: `liveTransport()` is the network the adapters already use.
+   */
+  transport?: Transport;
+  resume?: { containerId: string };
+  now?: number;
+}
+
+/**
+ * The three rows every publish question needs: the variant, its post (the tenant) and its channel.
+ *
+ * Separate from `publishVariant` because the dry run asks the same question and must answer it the
+ * same way — a preview that resolved a different channel would describe a different publish. Not
+ * scoped by itself: the caller compares `post.workspaceId` with its context, because the button and
+ * the tick arrive here after a route that already resolved the tenant.
+ */
+export type TargetLookup =
+  | { ok: true; variant: s.Variant; post: s.Post; channel: s.Channel }
+  | { ok: false; reason: "variant_missing" | "orphan" };
+
+export async function loadPublishTarget(env: WorkerEnv, variantId: string): Promise<TargetLookup> {
+  const db = createDb(env.DB);
+
+  const [variant] = await db.select().from(s.variants).where(eq(s.variants.id, variantId)).limit(1);
+  if (!variant) return { ok: false, reason: "variant_missing" };
+
+  const [post] = await db.select().from(s.posts).where(eq(s.posts.id, variant.postId)).limit(1);
+  const [channel] = await db
+    .select()
+    .from(s.channels)
+    .where(eq(s.channels.id, variant.channelId))
+    .limit(1);
+  if (!post || !channel) return { ok: false, reason: "orphan" };
+
+  return { ok: true, variant, post, channel };
+}
+
+/** Decrypted credentials for the adapter, or the reason there are none worth sending. */
+type ChannelAccess =
+  | { ok: true; input: PublishInput }
+  | {
+      ok: false;
+      verdict: "not_connected";
+      /** `credentials` means the token is missing or unreadable — a re-auth the board must show. */
+      cause: "credentials" | "channel_state";
+      detail: string;
+      channelId: string;
+      platform: s.Channel["platform"];
+    }
+  /**
+   * The channel is fine and the media cannot be sent: a local problem, blocked in the spec gate's
+   * vocabulary because `docs/001-PRD.md` FR-05 calls a missing asset a hard error that "blocks
+   * publish, names the field".
+   */
+  | {
+      ok: false;
+      verdict: "spec_blocked";
+      detail: string;
+      violations: SpecIssue[];
+      channelId: string;
+      platform: s.Channel["platform"];
+    };
+
+async function channelAccess(
+  env: WorkerEnv,
+  target: { variant: s.Variant; post: s.Post; channel: s.Channel },
+): Promise<ChannelAccess> {
+  const { variant, post, channel } = target;
+
+  // Stored state first: `disabled` is the operator's decision, and `reauth_required` has already been
+  // reported on the board. Neither should cost a decrypt.
+  if (channel.status !== "active") {
+    return {
+      ok: false,
+      verdict: "not_connected",
+      cause: "channel_state",
+      detail: `channel_${channel.status}`,
+      channelId: channel.id,
+      platform: channel.platform,
+    };
+  }
+
+  const ctx = systemContext(post.workspaceId);
+  const secrets = await credentialStore(env).read(ctx, channel.id);
+  if (!secrets.ok) {
+    // Missing or unreadable credentials are a re-authorisation need, not a crash (spec §1) — and an
+    // imported channel defaults to `active` with no token, so this is the check that stops it. The
+    // caller decides whether to record that state: a dry run must leave the board alone.
+    return {
+      ok: false,
+      verdict: "not_connected",
+      cause: "credentials",
+      detail: `credentials_${secrets.reason}`,
+      channelId: channel.id,
+      platform: channel.platform,
+    };
+  }
+
+  // Meta fetches the bytes itself, so a media row that cannot produce a public URL stops the publish
+  // here — before the adapter, and before anything is approved-and-then-failed at the platform.
+  const resolution = await mediaResolver(env).resolve(ctx, parseList(variant.mediaIds));
+  if (!resolution.ok) {
+    return {
+      ok: false,
+      verdict: "spec_blocked",
+      detail: resolution.message,
+      violations: [{ field: "media", level: "blocked", message: resolution.message }],
+      channelId: channel.id,
+      platform: channel.platform,
+    };
+  }
+
+  return {
+    ok: true,
+    input: {
+      variantId: variant.id,
+      platform: channel.platform,
+      channelId: channel.id,
+      accountRef: channel.accountRef,
+      caption: variant.caption ?? "",
+      hashtags: parseList(variant.hashtags),
+      media: resolution.media,
+      credentials: secrets.credentials,
+    },
+  };
 }
 
 /**
@@ -46,17 +216,14 @@ export interface VariantOutcome {
 export async function publishVariant(
   env: WorkerEnv,
   variantId: string,
-  publisher: Publisher,
-  now = Date.now(),
+  options: PublishOptions = {},
 ): Promise<VariantOutcome> {
   const db = createDb(env.DB);
+  const now = options.now ?? Date.now();
 
-  const [variant] = await db.select().from(s.variants).where(eq(s.variants.id, variantId)).limit(1);
-  if (!variant) return { variantId, platform: "unknown", verdict: "none", detail: "variant_missing" };
-
-  const [post] = await db.select().from(s.posts).where(eq(s.posts.id, variant.postId)).limit(1);
-  const [channel] = await db.select().from(s.channels).where(eq(s.channels.id, variant.channelId)).limit(1);
-  if (!post || !channel) return { variantId, platform: "unknown", verdict: "none", detail: "orphan" };
+  const target = await loadPublishTarget(env, variantId);
+  if (!target.ok) return { variantId, platform: "unknown", verdict: "none", detail: target.reason };
+  const { variant, post, channel } = target;
 
   // ── the approval is re-checked against what is stored *now* ───────────────────────────────────
   const check = await approvals(env).verify(variantId);
@@ -74,16 +241,50 @@ export async function publishVariant(
     return { variantId, platform: channel.platform, verdict: "reapproval_required", detail: check.reason };
   }
 
-  const result = await publisher.publish({
-    variantId,
-    platform: channel.platform,
-    caption: variant.caption ?? "",
-    hashtags: parseList(variant.hashtags),
-    mediaIds: parseList(variant.mediaIds),
-    channelId: channel.id,
-  });
+  // ── and the spec verdict is recomputed too: a stored `ok` can predate the rules ────────────────
+  const gate = await specGate(env).check(variant);
+  if (!gate.ok) return refuseSpec(env, { variantId, post, platform: channel.platform }, gate.violations, now);
 
-  switch (result.state) {
+  const access = await channelAccess(env, target);
+  if (!access.ok) {
+    if (access.verdict === "spec_blocked") {
+      return refuseSpec(env, { variantId, post, platform: access.platform }, access.violations, now);
+    }
+    if (access.cause === "credentials") {
+      // Discovery with a consequence: a channel whose token cannot be read needs a human, and the board
+      // has to say so (spec: platform-connections §"An expired token flips the channel").
+      const ctx = systemContext(post.workspaceId);
+      await credentialStore(env).markReauth(ctx, access.channelId);
+      await db.insert(s.activityLog).values({
+        id: `act_${crypto.randomUUID().slice(0, 8)}`,
+        workspaceId: post.workspaceId,
+        postId: post.id,
+        actorId: null,
+        action: "channel.reauth_required",
+        detail: JSON.stringify({ channelId: access.channelId, reason: access.detail }),
+        createdAt: now,
+      });
+    }
+    return { variantId, platform: access.platform, verdict: access.verdict, detail: access.detail };
+  }
+
+  // The URL a platform will fetch has to answer without credentials before we spend a call on it: a
+  // 404 at Instagram is a failed post whose error names nothing the operator can fix (m6 2.3).
+  const reachable = await probeMedia(access.input.media, options.transport ?? liveTransport());
+  if (!reachable.ok) {
+    return refuseSpec(
+      env,
+      { variantId, post, platform: channel.platform },
+      [{ field: "media", level: "blocked", message: reachable.message }],
+      now,
+    );
+  }
+
+  const publisher = options.publisher ?? publisherFor(channel.platform, creditsFor(env));
+  const estimateCostUsd = publisher.estimateCostUsd?.(access.input) ?? null;
+  const result = await send(publisher, access.input, options.resume);
+
+  switch (result.status) {
     case "published": {
       await db
         .insert(s.publishResults)
@@ -92,9 +293,10 @@ export async function publishVariant(
           variantId,
           platform: channel.platform,
           platformPostId: result.platformPostId,
-          url: result.url,
+          url: result.permalink,
           raw: result.raw === undefined ? null : JSON.stringify(result.raw).slice(0, 4000),
           state: "succeeded",
+          estimatedCostUsd: estimateCostUsd,
           createdAt: now,
         })
         // the partial unique index allows exactly one success per variant
@@ -107,11 +309,43 @@ export async function publishVariant(
         postId: post.id,
         actorId: null,
         action: "publish.succeeded",
-        detail: JSON.stringify({ variantId, platform: channel.platform, url: result.url }),
+        detail: JSON.stringify({ variantId, platform: channel.platform, url: result.permalink }),
         createdAt: now,
       });
 
-      return { variantId, platform: channel.platform, verdict: "published", url: result.url };
+      return {
+        variantId,
+        platform: channel.platform,
+        verdict: "published",
+        url: result.permalink,
+        estimatedCostUsd: estimateCostUsd,
+      };
+    }
+
+    case "uncertain": {
+      await db
+        .insert(s.publishResults)
+        .values({
+          id: `pub_${crypto.randomUUID().slice(0, 10)}`,
+          variantId,
+          platform: channel.platform,
+          platformPostId: null,
+          url: null,
+          raw: JSON.stringify(result.platformError ?? { detail: result.detail }).slice(0, 2000),
+          state: "uncertain",
+          estimatedCostUsd: estimateCostUsd,
+          createdAt: now,
+        })
+        .onConflictDoNothing();
+
+      return {
+        variantId,
+        platform: channel.platform,
+        verdict: "uncertain",
+        detail: result.detail,
+        platformError: result.platformError,
+        estimatedCostUsd: estimateCostUsd,
+      };
     }
 
     case "failed": {
@@ -123,17 +357,41 @@ export async function publishVariant(
           platform: channel.platform,
           platformPostId: null,
           url: null,
-          raw: JSON.stringify({ error: result.error }).slice(0, 2000),
-          state: result.ambiguous ? "uncertain" : "failed",
+          // Stored exactly as the platform said it: the operator reads the platform's words, and a
+          // later investigation can match them against the platform's own logs.
+          raw: JSON.stringify(result.platformError).slice(0, 2000),
+          state: "failed",
+          estimatedCostUsd: estimateCostUsd,
           createdAt: now,
         })
         .onConflictDoNothing();
+
+      // Out of credits is a spending problem, not a failed post: it gets its own audit line so the
+      // board and the alert read "top up X" rather than "publish failed at 07:00".
+      if (isCostProblem(result)) {
+        await db.insert(s.activityLog).values({
+          id: `act_${crypto.randomUUID().slice(0, 8)}`,
+          workspaceId: post.workspaceId,
+          postId: post.id,
+          actorId: null,
+          action: "publish.cost_blocked",
+          detail: JSON.stringify({
+            variantId,
+            platform: channel.platform,
+            platformError: result.platformError,
+            estimatedCostUsd: estimateCostUsd,
+          }),
+          createdAt: now,
+        });
+      }
 
       return {
         variantId,
         platform: channel.platform,
         verdict: "failed",
-        detail: result.ambiguous ? `uncertain: ${result.error}` : result.error,
+        detail: result.platformError.message,
+        platformError: result.platformError,
+        estimatedCostUsd: estimateCostUsd,
       };
     }
 
@@ -142,13 +400,166 @@ export async function publishVariant(
         variantId,
         platform: channel.platform,
         verdict: "awaiting_platform",
-        detail: result.reason,
-        resumeAfterMs: result.resumeAfterMs,
+        detail: result.detail,
+        resumeAfterMs: result.resume.afterMs,
+        containerId: result.resume.containerId,
       };
+
+    case "reauth_required": {
+      const ctx = systemContext(post.workspaceId);
+      await credentialStore(env).markReauth(ctx, channel.id);
+      await db
+        .insert(s.publishResults)
+        .values({
+          id: `pub_${crypto.randomUUID().slice(0, 10)}`,
+          variantId,
+          platform: channel.platform,
+          platformPostId: null,
+          url: null,
+          raw: JSON.stringify(result.platformError).slice(0, 2000),
+          state: "failed",
+          estimatedCostUsd: estimateCostUsd,
+          createdAt: now,
+        })
+        .onConflictDoNothing();
+      await db.insert(s.activityLog).values({
+        id: `act_${crypto.randomUUID().slice(0, 8)}`,
+        workspaceId: post.workspaceId,
+        postId: post.id,
+        actorId: null,
+        action: "channel.reauth_required",
+        detail: JSON.stringify({ channelId: channel.id, platformError: result.platformError }),
+        createdAt: now,
+      });
+
+      return {
+        variantId,
+        platform: channel.platform,
+        verdict: "reauth_required",
+        detail: result.platformError.message,
+        platformError: result.platformError,
+        estimatedCostUsd: estimateCostUsd,
+      };
+    }
 
     case "not_connected":
       return { variantId, platform: channel.platform, verdict: "not_connected", detail: result.reason };
   }
+}
+
+/**
+ * Whether a metered platform has been funded — the one thing an adapter cannot know.
+ *
+ * Read here because this is where the environment lives; passed down because `src/publishers` holds
+ * no env and no database (`AGENTS.md`, layering).
+ */
+function creditsFor(env: WorkerEnv): { creditsConfigured: boolean } {
+  return { creditsConfigured: env.X_CREDITS_CONFIGURED === "true" };
+}
+
+/**
+ * Send — or, when a tick is resuming a parked job, poll and finish what the last attempt started.
+ *
+ * A read-back follows any `published` answer, because a 200 is not success (non-negotiable 4): a
+ * success whose read-back fails is `uncertain`, which needs a human — not a retry, because a duplicate
+ * post cannot be undone from this side.
+ */
+async function send(
+  publisher: Publisher,
+  input: PublishInput,
+  resume: { containerId: string } | undefined,
+): Promise<PublishResult> {
+  if (resume) {
+    const parked: PublishResult = {
+      status: "awaiting_platform",
+      detail: "resumed from a parked job",
+      resume: { afterMs: 0, containerId: resume.containerId },
+    };
+    return publisher.verify(parked, input);
+  }
+
+  const sent = await publisher.publish(input);
+  return sent.status === "published" ? publisher.verify(sent, input) : sent;
+}
+
+/** A refusal that is about the content: the post goes back to review with the rules it breaks named. */
+async function refuseSpec(
+  env: WorkerEnv,
+  target: { variantId: string; post: s.Post; platform: string },
+  violations: SpecIssue[],
+  now: number,
+): Promise<VariantOutcome> {
+  const db = createDb(env.DB);
+
+  await db.update(s.posts).set({ status: "review", updatedAt: now }).where(eq(s.posts.id, target.post.id));
+  await db.insert(s.activityLog).values({
+    id: `act_${crypto.randomUUID().slice(0, 8)}`,
+    workspaceId: target.post.workspaceId,
+    postId: target.post.id,
+    actorId: null,
+    action: "publish.refused",
+    detail: JSON.stringify({ variantId: target.variantId, reason: "spec_blocked", violations }),
+    createdAt: now,
+  });
+
+  return {
+    variantId: target.variantId,
+    platform: target.platform,
+    verdict: "spec_blocked",
+    detail: violations[0]?.message ?? "blocked by the platform specs",
+    violations,
+  };
+}
+
+// ── the dry run ───────────────────────────────────────────────────────────────────────────────────
+
+export type PreviewOutcome =
+  | { ok: true; variantId: string; preview: Preview }
+  | {
+      ok: false;
+      variantId: string;
+      /** `spec_blocked` is a media problem the dry run found before any approval: same rule, same words. */
+      reason: "not_found" | "not_connected" | "spec_blocked";
+      detail?: string;
+      violations?: SpecIssue[];
+    };
+
+/**
+ * What a publish to this variant would send, without sending it.
+ *
+ * The publisher does the describing (`preview()` runs its own flow against a recording transport), so
+ * this function's job is only to resolve the same rows a real publish would — including the media URLs,
+ * because those are what the operator is being asked to approve.
+ */
+export async function previewVariant(
+  env: WorkerEnv,
+  variantId: string,
+  options: PublishOptions = {},
+): Promise<PreviewOutcome> {
+  const target = await loadPublishTarget(env, variantId);
+  if (!target.ok) return { ok: false, variantId, reason: "not_found", detail: target.reason };
+
+  const publisher = options.publisher ?? publisherFor(target.channel.platform, creditsFor(env));
+
+  // An empty call list would read as "nothing would be sent to this platform", which is not the same
+  // statement as "there is no adapter for it yet". Say the true one.
+  if (publisher.platform === "none") {
+    return {
+      ok: false,
+      variantId,
+      reason: "not_connected",
+      detail: "no platform adapter is configured yet (M5)",
+    };
+  }
+
+  const access = await channelAccess(env, target);
+  if (!access.ok) {
+    return access.verdict === "spec_blocked"
+      ? { ok: false, variantId, reason: "spec_blocked", detail: access.detail, violations: access.violations }
+      : { ok: false, variantId, reason: "not_connected", detail: access.detail };
+  }
+
+  return { ok: true, variantId, preview: await publisher.preview(access.input) };
 }
 
 // ── the button ────────────────────────────────────────────────────────────────────────────────────
@@ -169,10 +580,10 @@ export interface PublishNowReport {
 export async function publishNow(
   env: WorkerEnv,
   postId: string,
-  publisher: Publisher,
-  now = Date.now(),
+  options: PublishOptions = {},
 ): Promise<PublishNowReport | null> {
   const db = createDb(env.DB);
+  const now = options.now ?? Date.now();
 
   const [post] = await db.select().from(s.posts).where(eq(s.posts.id, postId)).limit(1);
   if (!post) return null;
@@ -180,14 +591,16 @@ export async function publishNow(
   const variants = await db.select().from(s.variants).where(eq(s.variants.postId, postId));
   const outcomes: VariantOutcome[] = [];
   for (const variant of variants) {
-    outcomes.push(await publishVariant(env, variant.id, publisher, now));
+    outcomes.push(await publishVariant(env, variant.id, { ...options, now }));
   }
 
   return {
     postId,
     outcomes,
     published: outcomes.filter((outcome) => outcome.verdict === "published").length,
-    blocked: outcomes.filter((outcome) => outcome.verdict === "reapproval_required").length,
+    blocked: outcomes.filter(
+      (outcome) => outcome.verdict === "reapproval_required" || outcome.verdict === "spec_blocked",
+    ).length,
   };
 }
 
@@ -201,7 +614,12 @@ export interface TickReport {
 }
 
 export interface TickOptions {
-  publisher: Publisher;
+  /** Test seam; production resolves the adapter per variant's platform. */
+  publisher?: Publisher;
+  /** Test seam; the reachability probe's network. Production sends through `liveTransport()`. */
+  transport?: Transport;
+  /** Test seam; production sends through `mailerFrom(env)` — the dev outbox until Resend lands. */
+  mailer?: Mailer;
   now?: number;
   maxJobs?: number;
   /** The global kill switch; workspace switches are checked inside the claim. */
@@ -218,44 +636,112 @@ export async function runTick(env: WorkerEnv, options: TickOptions): Promise<Tic
   report.reclaimed = reclaim.requeued;
   report.dead = reclaim.dead;
 
+  // Parked work comes back through `claim`, so the lease, the attempt count and the kill switch apply
+  // to a resume exactly as they apply to a first try (US-032: a parked job used to wait forever).
+  await store.resumeParked(now);
+
   for (let index = 0; index < maxJobs; index += 1) {
     const job = await store.claim(now, options.globalEnabled ?? true);
     if (!job) break;
     report.claimed += 1;
 
-    const parsed = safeJson(job.payload) as { variantId?: string };
-    if (!parsed.variantId) {
+    const parsed = safeJson(job.payload) as { variantId?: string; containerId?: string };
+    const variantId = parsed.variantId;
+    if (!variantId) {
       await store.fail(job.id, "job payload has no variantId");
       report.outcomes.push({ jobId: job.id, verdict: "none", detail: "payload" });
       continue;
     }
 
-    const outcome = await publishVariant(env, parsed.variantId, options.publisher, now);
+    const outcome = await publishVariant(env, variantId, {
+      publisher: options.publisher,
+      transport: options.transport,
+      resume: typeof parsed.containerId === "string" ? { containerId: parsed.containerId } : undefined,
+      now,
+    });
     report.outcomes.push({ jobId: job.id, verdict: outcome.verdict, detail: outcome.detail });
+
+    /**
+     * Tell the operator, once, when the job stops for good (spec: m5-publishing 7.1).
+     *
+     * Only terminal outcomes — a retry that may still succeed is not news, and an email per attempt
+     * teaches the one person who reads these to ignore them.
+     */
+    const tellOperator = async () => {
+      await sendPublishFailureEmail(env, { variantId, outcome }, options.mailer);
+    };
 
     switch (outcome.verdict) {
       case "published":
         await store.complete(job.id);
         break;
       case "awaiting_platform":
-        await store.park(job.id, outcome.detail ?? "platform not ready", outcome.resumeAfterMs ?? 300_000);
+        // A poll is an attempt like any other, so the count keeps rising; `fail` is what stops a job
+        // that ends badly, and Meta expires a container after 24 h, so a park cannot last forever
+        // either. The container id is what makes the next tick a poll instead of a second post.
+        await store.park(job.id, {
+          reason: outcome.detail ?? "platform not ready",
+          resumeAfterMs: outcome.resumeAfterMs ?? 300_000,
+          containerId: outcome.containerId,
+        });
         break;
       case "not_connected":
         // Nothing is wrong with the job; there is nowhere to send it. Park for an hour rather than
-        // burning attempts on a condition only a deploy can fix.
-        await store.park(job.id, outcome.detail ?? "no adapter", 60 * 60 * 1000);
+        // burning attempts on a condition only a deploy or a reconnect can fix.
+        await store.park(job.id, { reason: outcome.detail ?? "no adapter", resumeAfterMs: 60 * 60 * 1000 });
         break;
-      case "failed":
-        await store.fail(job.id, outcome.detail ?? "publish failed", {
-          ambiguous: (outcome.detail ?? "").startsWith("uncertain"),
+      case "reauth_required":
+        // The token was refused, and the channel is already flagged. Retrying cannot fix a credential;
+        // the operator reconnects, and the next tick after that resumes the work.
+        await store.park(job.id, {
+          reason: outcome.detail ?? "the channel needs re-authorisation",
+          resumeAfterMs: 60 * 60 * 1000,
         });
         break;
+      case "uncertain":
+        // A request that may have succeeded is never retried: a duplicate post cannot be undone from
+        // this side. `ambiguous` records it as needing a human and skips backoff entirely.
+        await store.fail(job.id, outcome.detail ?? "the platform may have accepted it", {
+          ambiguous: true,
+        });
+        break;
+      case "failed": {
+        // The platform's own code and message: "publish failed" is not actionable at 07:00.
+        const error = outcome.platformError;
+        const reason = error ? `${error.code}: ${error.message}` : (outcome.detail ?? "publish failed");
+
+        // Out of credits is money, not weather: retrying spends nothing and fixes nothing, so the
+        // job stops here instead of burning the backoff that a transient failure gets
+        // (docs/003-ITA.md §7: "402 → top up credits, not retryable").
+        if (isCostProblem(outcome)) {
+          await store.dead(job.id, `cost_blocked: ${reason}`);
+          await tellOperator();
+          break;
+        }
+
+        const stopped = await store.fail(job.id, reason);
+        if (stopped.state === "dead") await tellOperator();
+        break;
+      }
       case "reapproval_required":
         // Content changed under an approval: a human problem, so terminal rather than retried.
         await store.dead(job.id, outcome.detail ?? "reapproval_required");
+        await tellOperator();
         break;
-      default:
-        await store.fail(job.id, outcome.detail ?? "unknown outcome");
+      case "spec_blocked":
+        // The platform would reject it. Retrying cannot fix text; the operator edits and re-approves.
+        await store.dead(job.id, outcome.detail ?? "spec_blocked");
+        await tellOperator();
+        break;
+      case "none": {
+        const stopped = await store.fail(job.id, outcome.detail ?? "unknown outcome");
+        if (stopped.state === "dead") await tellOperator();
+        break;
+      }
+      default: {
+        const never: never = outcome.verdict;
+        throw new Error(`unhandled publish verdict: ${String(never)}`);
+      }
     }
   }
 

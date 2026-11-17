@@ -13,6 +13,10 @@
  *     --hashtags "#inventory #ops" \
  *     --token pvt_xxx
  *
+ * The file goes to R2, not through the app: mint a signed URL, PUT the bytes, record what landed. The
+ * declared type comes from the extension (or `--mime`), and the server refuses a file whose bytes
+ * disagree with it.
+ *
  * Reads POSTVYN_URL and POSTVYN_TOKEN from the environment when the flags are absent, so a shell that
  * already has them does not need to repeat them.
  *
@@ -40,34 +44,70 @@ if (!file || !token) {
 }
 
 const { readFile } = await import("node:fs/promises");
-const { basename } = await import("node:path");
+const { basename, extname } = await import("node:path");
 
 const bytes = await readFile(file);
 const filename = basename(file);
+
+/**
+ * The declared type. Mint signs the URL for this content type, and record refuses a file whose bytes
+ * disagree with it — so a render with the wrong extension fails loudly instead of being stored as
+ * something it is not. Override with `--mime` when the extension lies.
+ */
+const MIME_BY_EXTENSION = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+};
+const mime = flag("mime") ?? MIME_BY_EXTENSION[extname(filename).toLowerCase()];
+if (!mime) {
+  console.error(`cannot tell what ${filename} is — pass --mime (image/png, video/mp4, …)`);
+  process.exit(2);
+}
 
 function fail(message, code = 1) {
   console.error(message);
   process.exit(code);
 }
 
-// 1. upload the asset
-const upload = await fetch(`${base}/api/agent/media`, {
+// 1. mint a signed URL for one object, PUT the file to it, then record what landed.
+const mint = await fetch(`${base}/api/agent/media`, {
   method: "POST",
-  headers: {
-    authorization: `Bearer ${token}`,
-    "content-type": "application/octet-stream",
-    "x-postvyn-filename": filename,
-  },
+  headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+  body: JSON.stringify({ filename, mime, bytes: bytes.length }),
+});
+const minted = await mint.json().catch(() => ({}));
+if (!mint.ok || !minted.ok) {
+  fail(`upload refused: ${mint.status} ${JSON.stringify(minted.error ?? minted)}`);
+}
+
+const put = await fetch(minted.result.url, {
+  method: "PUT",
+  headers: { "content-type": minted.result.mime },
   body: bytes,
 });
+if (!put.ok) {
+  fail(`storage refused the upload: ${put.status} ${put.statusText} (key ${minted.result.key})`);
+}
 
-const uploaded = await upload.json().catch(() => ({}));
-if (!upload.ok || !uploaded.ok) {
-  fail(`upload refused: ${upload.status} ${JSON.stringify(uploaded.error ?? uploaded)}`);
+const recorded = await fetch(`${base}/api/agent/media/${minted.result.uploadId}/record`, {
+  method: "POST",
+  headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+  body: JSON.stringify({ mime: minted.result.mime }),
+});
+const uploaded = await recorded.json().catch(() => ({}));
+if (!recorded.ok || !uploaded.ok) {
+  fail(`record refused: ${recorded.status} ${JSON.stringify(uploaded.error ?? uploaded)}`);
 }
 
 const mediaId = uploaded.result.mediaId;
-console.log(`asset ${filename} → ${mediaId} (${Math.round(uploaded.result.bytes / 1024)} KB, ${uploaded.result.mime})`);
+console.log(
+  `asset ${filename} → ${mediaId} (${Math.round(uploaded.result.bytes / 1024)} KB, ${uploaded.result.mime}${uploaded.result.deduplicated ? ", already stored" : ""})`,
+);
 
 // 2. create the draft. The channel is named by platform — the caller knows "tiktok", not an id.
 const target = flag("channel")

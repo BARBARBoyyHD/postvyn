@@ -1,0 +1,13 @@
+{
+  "replies": [
+    { "status": 200, "body": { "id": "container-image-1" } },
+    {
+      "status": 200,
+      "body": {
+        "id": "container-image-1",
+        "status_code": "ERROR",
+        "status": "Media upload has failed with error code 2207026"
+      }
+    }
+  ]
+}

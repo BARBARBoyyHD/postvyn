@@ -1,54 +1,54 @@
 ## 1. Credentials
 
-- [ ] 1.1 Implement `encrypt`/`decrypt` with AES-256-GCM over WebCrypto, channel id as additional authenticated data, `key_version` stored per row
-- [ ] 1.2 `POST /api/v1/channels` and `DELETE` for connect/disconnect, owner-only
-- [ ] 1.3 Never return a token or ciphertext from any endpoint; tests assert the absence
-- [ ] 1.4 Write a re-encryption pass for `key_version` rotation, with a per-row failure report
-- [ ] 1.5 Set channel state from credential health: `active`, `reauth_required`, `disabled`
+- [x] 1.1 Implement `encrypt`/`decrypt` with AES-256-GCM over WebCrypto, channel id as additional authenticated data, `key_version` stored per row — `src/lib/crypto.ts` + `requireTokenEncryptionKey()` in `src/lib/env.ts`; key is `TOKEN_ENCRYPTION_KEY` (32 bytes base64), version from `TOKEN_ENCRYPTION_KEY_VERSION` (default 1); tamper/AAD/wrong-key covered in `test/crypto.test.ts`
+- [x] 1.2 `POST /api/v1/channels` and `DELETE` for connect/disconnect, owner-only — `src/app/api/v1/channels/route.ts`; connect upserts credentials on an existing (brand, platform, accountRef) so reconnect is the same call; DELETE clears the credential row and sets `disabled`, never deletes the channel
+- [x] 1.3 Never return a token or ciphertext from any endpoint; tests assert the absence — connect/list/detail shapes scanned for plaintext, ciphertext and field names in `test/credentials.test.ts`; every channels route answers `401` in `test/routes.test.ts`
+- [x] 1.4 Write a re-encryption pass for `key_version` rotation, with a per-row failure report — `rotateCredentials(env, {from, to})` in `src/db/credentials.ts` returns `{ok, rotated, failed:[{channelId, reason}]}`; one unreadable row is reported and the rest still rotate (tested)
+- [x] 1.5 Set channel state from credential health: `active`, `reauth_required`, `disabled` — `channels.status` already existed (no migration needed); reads derive the state (`effectiveChannelStatus`, left join on credential existence) so an imported channel is never `active`, and a failed decrypt at publish time flips the channel to `reauth_required` with an audit row
 
 ## 2. Publisher interface
 
-- [ ] 2.1 Define the port: `preview(variant)`, `publish(variant)`, `verify(result)` and the result shape
-- [ ] 2.2 Dry run reuses the real path with the network removed, and lists the calls it would make
-- [ ] 2.3 Confirmation must name platform and account; a mismatch with the variant's channel is refused
-- [ ] 2.4 Record the platform's own error code and message verbatim on failure
+- [x] 2.1 Define the port: `preview(variant)`, `publish(variant)`, `verify(result)` and the result shape — `src/publishers/port.ts`: `PublishResult` is `published | awaiting_platform | uncertain | failed | not_connected`, failures carry `{code, message}`; `src/db/tick.ts` calls `verify()` on any success before storing `published` (non-negotiable 4)
+- [x] 2.2 Dry run reuses the real path with the network removed, and lists the calls it would make — `src/publishers/transport.ts` (`liveTransport` / `recordingTransport`) + `previewFlow()`; the test double proves preview and publish emit the same first call and the dry run makes no request. Listing stops at the first send, because a later call's URL depends on the platform's answer
+- [x] 2.3 Confirmation must name platform and account; a mismatch with the variant's channel is refused — `confirmTargets()` in `src/lib/publish-confirm.ts`, enforced by `POST /api/v1/posts/:id/publish` (`422 confirmation_mismatch`, before any approval); the upload button now sends one confirmation per variant's channel
+- [x] 2.4 Record the platform's own error code and message verbatim on failure — `publish_results.raw` holds `{code, message}` as received, `jobs.last_error` carries them on the failing attempt; asserted in `test/publishing.test.ts`
 
 ## 3. Threads adapter
 
-- [ ] 3.1 Container create → poll → publish → verify, with the 250-post/24h ceiling surfaced
-- [ ] 3.2 Text and image variants; video routed through the same container flow
-- [ ] 3.3 Fixtures for expired token, rejected container and rate limit
+- [x] 3.1 Container create → poll → publish → verify, with the 250-post/24h ceiling surfaced — `src/publishers/threads.ts`: create → poll `status` → `threads_publish` → read-back; `THREADS_POSTS_PER_24H = 250` (cited to `docs/001-PRD.md` FR-08) is shown in `preview().notes`, surfaced and not enforced per ITA §6; "creates, polls, publishes, then takes the permalink from the read-back" and "shows the 250-post ceiling…" in `test/publish-threads.test.ts`
+- [x] 3.2 Text and image variants; video routed through the same container flow — `containerParams()` sets `media_type` TEXT / IMAGE / VIDEO with `image_url` or `video_url`; one media item per post, and more is refused as `media_unsupported` rather than silently dropped (Threads carousel is not wired)
+- [x] 3.3 Fixtures for expired token, rejected container and rate limit — `test/fixtures/threads/{expired-token,rejected-container,rate-limit,text-published,read-back-mismatch}.json` read through `test/support/fixture-transport.ts`; expired token (190/463) is `reauth_required` + channel flipped + audit row, rate limit (613) stays a retryable `failed`, rejected container quotes Meta's `error_message` verbatim
 
 ## 4. Instagram adapter
 
-- [ ] 4.1 `REELS`, `IMAGE` and `CAROUSEL` handled as separate shapes, each with its own media requirements
-- [ ] 4.2 Media resolved to public URLs — Meta fetches the bytes itself
-- [ ] 4.3 Container creation parks the job; polling resumes on a later tick
-- [ ] 4.4 Verify by reading the published media back and storing its permalink
-- [ ] 4.5 Monthly refresh of the long-lived token, with failure flipping the channel to `reauth_required`
+- [x] 4.1 `REELS`, `IMAGE` and `CAROUSEL` handled as separate shapes, each with its own media requirements — `src/publishers/instagram-shapes.ts`: count and kind per shape, carousel ceiling reuses the spec engine's `PLATFORM_RULES.instagram.mediaMax` instead of a second copy; shape named in `preview().notes`, refusals are `media_required` / `too_many_media` / `media_unsupported`
+- [x] 4.2 Media resolved to public URLs — Meta fetches the bytes itself — `src/db/media.ts`: `mediaIds` → `R2_PUBLIC_BASE` + R2 key, in variant order; refuses `base_missing` (names the variable), `no_object_key` (names the row, old vault path), `not_postable`, `media_missing` before the adapter runs; "media has to resolve to a public URL" in `test/publish-instagram.test.ts`
+- [x] 4.3 Container creation parks the job; polling resumes on a later tick — `jobs.park` stores the container id in the payload, `jobs.resumeParked` does `awaiting_platform → queued` so the resume goes back through `claim` (lease, attempts, kill switch), and `publishVariant` resumes via `verify()` instead of creating a second container; "polls on the next tick…" and "creates one container, not one per tick" in `test/publish-instagram.test.ts`
+- [x] 4.4 Verify by reading the published media back and storing its permalink — `readBackAnswer()` in `src/publishers/meta.ts` is the only path to `published`: a failed read is `uncertain`, a different id is `uncertain`; "a read-back that disagrees is uncertain, never published" in `test/publish-threads.test.ts`
+- [x] 4.5 Monthly refresh of the long-lived token, with failure flipping the channel to `reauth_required` — `src/publishers/instagram-token.ts` + `src/db/token-refresh.ts`, run from `runScheduled` every tick and gated by `INSTAGRAM_REFRESH_AFTER_MS` (25 of the token's 60 days); a refusal is `markReauth` + a `channel.token_refresh_failed` audit row; `test/token-refresh.test.ts` covers fresh/refreshed/refused
 
 ## 5. X adapter
 
-- [ ] 5.1 OAuth 1.0a request signing from four stored credentials
-- [ ] 5.2 Chunked video upload where the post carries video
-- [ ] 5.3 Cost estimate from the post's shape; shown before the first post, stored with the result
-- [ ] 5.4 Refuse to publish when credits are not configured, with a message that says so
-- [ ] 5.5 `402` handling recorded as a cost problem, not a failure
+- [x] 5.1 OAuth 1.0a request signing from four stored credentials — `src/publishers/x-oauth.ts`: HMAC-SHA1 over `crypto.subtle`, RFC 3986 percent-encoding, query and form-body parameters signed while only `oauth_*` travel in the header; `apiKey/apiSecret/accessToken/accessSecret` come from `PublishInput.credentials`; the oauth.net reference header and X's worked example are reproduced exactly in `test/publish-x.test.ts` (that test caught query parameters leaking into the header)
+- [x] 5.2 Chunked video upload where the post carries video — `src/publishers/x-media.ts`: download the bytes → INIT → `X_UPLOAD_CHUNK_BYTES` (5 MB, X's chunked-upload limit) APPENDs → FINALIZE; `processing_info.pending` parks the job with the media id as the resume token, `verify()` polls STATUS then creates one tweet; "uploads a video in 5 MB segments, parks while X processes it, then posts once" and "stops at a refusal mid-upload" in `test/publish-x.test.ts` over `test/fixtures/x/{video-processing,media-append-fails}.json`
+- [x] 5.3 Cost estimate from the post's shape; shown before the first post, stored with the result — `X_COST_PER_POST_USD = 0.015` / `X_COST_PER_POST_WITH_LINK_USD = 0.2` (`docs/001-PRD.md` §8, `docs/005-REQUIREMENTS.md` §4) in `src/publishers/x.ts`, a bare domain counting as a link (`docs/003-ITA.md` §11); `preview()` returns it and starts with it; `Publisher.estimateCostUsd()` feeds `publish_results.estimated_cost_usd` (migration `0019`) from `src/db/tick.ts`, and `VariantOutcome.estimatedCostUsd` carries it to the API. The dry run is rendered by `PublishNowButton` before the confirm — per-channel estimate, total, and the preview's own notes — and the stored estimate appears in the post detail's Results
+- [x] 5.4 Refuse to publish when credits are not configured, with a message that says so — `X_CREDITS_CONFIGURED` (env, `.env.example`) → `publisherFor(platform, {creditsConfigured})` → the adapter answers `not_connected` with a message naming the switch *before* any call, and the preview carries the same sentence; "refuses before the first call when credits are not configured" in `test/publish-x.test.ts`
+- [x] 5.5 `402` handling recorded as a cost problem, not a failure — X's 402 stays `failed` with its code pinned to `PAYMENT_REQUIRED_CODE` (`src/publishers/port.ts`, `xFailure()`), so `src/db/tick.ts` writes a `publish.cost_blocked` audit row and kills the job (`dead`, `cost_blocked: 402: …`) instead of spending the 1/4/9-minute retries; the choice avoids widening the `publish_results.state` CHECK, which SQLite can only change by rebuilding the table; "records 402 as a cost problem and stops the job instead of retrying it" in `test/publish-x.test.ts`
 
 ## 6. TikTok pack
 
-- [ ] 6.1 Generate a pack: caption, hashtags, ordered asset paths, checklist, one-line reason
-- [ ] 6.2 Record manual completion with the operator's post URL; `published` only then
-- [ ] 6.3 Show the guideline reason wherever a TikTok target appears
+- [x] 6.1 Generate a pack: caption, hashtags, ordered asset paths, checklist, one-line reason — `buildTiktokPack()` in `src/publishers/tiktok.ts` is pure (caption, hashtags, assets in publish order, five-step checklist, `TIKTOK_REASON`); `GET /api/v1/variants/:id/tiktok-pack` answers it via `src/db/tiktok-pack.ts`, and each asset carries the stored `path` (R2 key or vault path) beside a `url` that is null when no public address exists; "carries the caption, the hashtags, the assets in order, a checklist and the reason" and "labels what is a stored path and what is a public URL" in `test/tiktok-pack.test.ts`
+- [x] 6.2 Record manual completion with the operator's post URL; `published` only then — `POST /api/v1/variants/:id/tiktok-complete` (owner-only, `z.url()` http/https) → `tiktokStore().complete()` in `src/db/tiktok-pack.ts`: verifies the approval, inserts the `succeeded` row through `one_publish_per_variant` (the operator's URL is the read-back for a manual platform — stated in a why-comment), sets the post `published`, settles the parked job and writes `publish.manual_completed`; "records the URL, moves the post to published…", "refuses a second record of the same post…" and "refuses a URL for content that changed after it was approved" in `test/tiktok-pack.test.ts`
+- [x] 6.3 Show the guideline reason wherever a TikTok target appears — backend half done: `manualReason()` in `src/publishers/tiktok.ts` and a `note` field on every variant row from `getPostDetail`, `listBoard` and `listReviewQueue` (`src/db/repository.ts`); the dry run already carried the same sentence in `preview().notes`; "is on every variant row the board, the review queue and the post detail return" in `test/tiktok-pack.test.ts` — rendered on the board card, the review card and the post detail as one line (full text on hover on the two cards)
 
 ## 7. Failure handling
 
-- [ ] 7.1 Email on a failed scheduled publish: platform error, account, post link, one suggested action
-- [ ] 7.2 Treat `uncertain` as needing a human, never as retryable
-- [ ] 7.3 Confirm `one_publish_per_variant` prevents a second success even under a retry bug
+- [x] 7.1 Email on a failed scheduled publish: platform error, account, post link, one suggested action — `src/db/alerts.ts` (`sendPublishFailureEmail`, `suggestedAction`) over a third `Mailer` method `sendPublishFailure` in `src/lib/email/index.ts` (dev outbox until Resend lands, ADR-020 deferred), called from `runTick` only where a job goes `dead` and injected through `TickOptions.mailer`; the message quotes the platform's code+message, the channel's `accountRef`, `${BETTER_AUTH_URL}/posts/:id` and one action; "quotes the platform error…" and "three attempts, one email" in `test/failure-alerts.test.ts`
+- [x] 7.2 Treat `uncertain` as needing a human, never as retryable — behaviour was correct and no job-layer fix was needed: `fail(..., {ambiguous: true})` sets `failed` with `lease_until` null, and `claim`, `resumeParked` and `reclaimExpired` each filter on a state it no longer holds; `test/queue.test.ts` now pins two more ticks and a year-long lease sweep claiming nothing, with the result row still `uncertain` and the post not `published`
+- [x] 7.3 Confirm `one_publish_per_variant` prevents a second success even under a retry bug — the partial unique index already exists (`db/migrations/0011_create_publish_results_table.sql`, mirrored in `src/db/schema.ts`), so no migration; three tests in `test/queue.test.ts`: two sequential `publishVariant` calls, two concurrent ones, and a direct second `succeeded` insert the database rejects
 
 ## 8. Close-out
 
-- [ ] 8.1 Mark `US-036`…`US-045` in `docs/006-USER-STORIES.md`
-- [ ] 8.2 Record real costs observed for the first X post in the journal
-- [ ] 8.3 Run `openspec validate m5-publishing` and confirm the change is complete before archiving
+- [x] 8.1 Mark `US-036`…`US-045` in `docs/006-USER-STORIES.md` — verified against `src/` 2026-11-17: 2 ☑ (US-038, US-042), 8 ◐ (◐ = US-036/037 no Meta connect form — X's is the only one; US-039/040 account and call list never rendered, only platform and count; US-041 no live read-back observed; US-043 Resend deferred, dev outbox only; US-044 board shows no channel state; US-045 Threads tokens never refresh)
+- [ ] 8.2 Record real costs observed for the first X post in the journal — **blocked: waiting on the first live X post** — nothing has published to X yet, so there is no observed cost to record (no fictional numbers)
+- [x] 8.3 Run `openspec validate m5-publishing` and confirm the change is complete before archiving — validated: `openspec validate m5-publishing` passes (2026-11-17)

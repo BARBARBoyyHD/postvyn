@@ -4,7 +4,7 @@ type: spec
 doc: stories
 project: postvyn
 status: draft
-updated: 2026-11-15
+updated: 2026-11-17
 tags: [postvyn, spec, stories]
 aliases: [USER-STORIES, 006, stories]
 ---
@@ -16,10 +16,11 @@ aliases: [USER-STORIES, 006, stories]
 **Status:** Living document — expected to change
 **Derived from:** PRD v0.1 (`001-PRD.md`), ITA v0.3 (`003-ITA.md`), PEP v0.1 (`004-PEP.md`)
 
-> **No test files yet, on purpose.** These stories will move as the product is used. Writing test
-> scaffolding against stories that are still settling produces tests that encode the wrong
-> requirements. Acceptance notes below are one line each — enough to know when a story is done, not
-> enough to over-fit. Come back and write tests when M3 lands and the shape stops moving.
+> **Tests exist now.** When this file was written there were none, on purpose: scaffolding against
+> stories that are still settling produces tests that encode the wrong requirements. `apps/frontend/test/`
+> holds 25 test files today (spec engine, status machine, approval hash, publishers over recorded
+> fixtures), and none of them needs credentials to pass. Acceptance notes below are one line each —
+> enough to know when a story is done, not enough to over-fit.
 
 ---
 
@@ -87,7 +88,7 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
-| US-001 | As an operator I sign up with email and password | account created, verification email sent, cannot sign in until verified | Must | M1 | ◐ |
+| US-001 | As an operator I sign up with email and password | account created and signed in immediately; no verification email while mail is deferred | Must | M1 | ◐ |
 | US-002 | As an operator I sign in and stay signed in | session survives a browser restart; expiry ~30 days | Must | M1 | ☑ |
 | US-003 | As an operator I reset a forgotten password by email | single-use link, short TTL, uniform response (no account enumeration) | Must | M1 | ◐ |
 | US-004 | As an operator I sign out of every device | all sessions for the user revoked immediately | Should | M1 | ☐ |
@@ -117,15 +118,15 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
-| US-017 | As an operator I create a post with title, pillar and format | post saved in `drafting` | Must | M3 | ☐ |
-| US-018 | As an operator I add one variant per target platform | variants independent; media order per variant | Must | M3 | ☐ |
-| US-019 | As an operator the counter counts the way the platform does | X: a URL costs 23 chars regardless of length | Must | M3 | ☐ |
-| US-020 | As an operator I keep hashtags where the platform wants them | IG → first comment; Threads/X → in the caption; budget includes them | Must | M3 | ☐ |
-| US-021 | As an operator I attach media from the library | reorder for carousels; size/dimension warnings per platform | Must | M3 | ☐ |
-| US-022 | As an operator a spec error blocks me before publishing | hard error names the field and blocks; warning allows with a typed reason | Must | M3 | ☐ |
-| US-023 | As an operator my draft saves itself | autosave ≤5 s debounce; no lost work on refresh | Should | M3 | ☐ |
-| US-024 | As an operator I duplicate a post to another platform | variant copied with its caption, then edited independently | Could | M3 | ☐ |
-| US-025 | As an operator I see the brand's voice note while composing | voice text from the brand shown beside the editor | Could | M3 | ☐ |
+| US-017 | As an operator I create a post with title, pillar and format | post saved in `drafting` | Must | M3 | ☑ |
+| US-018 | As an operator I add one variant per target platform | variants independent; media order per variant | Must | M3 | ☑ |
+| US-019 | As an operator the counter counts the way the platform does | X: a URL costs 23 chars regardless of length | Must | M3 | ☑ |
+| US-020 | As an operator I keep hashtags where the platform wants them | IG → first comment; Threads/X → in the caption; budget includes them | Must | M3 | ◐ — X's count leaves its hashtags out |
+| US-021 | As an operator I attach media from the library | reorder for carousels; size/dimension warnings per platform | Must | M3 | ☑ |
+| US-022 | As an operator a spec error blocks me before publishing | hard error names the field and blocks; warning allows with a typed reason | Must | M3 | ◐ — approve/publish never check the verdict |
+| US-023 | As an operator my draft saves itself | autosave ≤5 s debounce; no lost work on refresh | Should | M3 | ◐ — refresh drops the pending save, no flush |
+| US-024 | As an operator I duplicate a post to another platform | variant copied with its caption, then edited independently | Could | M3 | ☑ |
+| US-025 | As an operator I see the brand's voice note while composing | voice text from the brand shown beside the editor | Could | M3 | ☑ |
 
 ---
 
@@ -133,16 +134,16 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
-| US-026 | As an operator I approve a variant with a slot | approval records user + content hash + time | Must | M4 | ☐ |
-| US-027 | As an operator I approve several items at once | bulk approve writes one audit row per item | Must | M4 | ☐ |
-| US-028 | As an operator an edit after approval invalidates it | variant returns to `review`; publish returns 409 | Must | M4 | ☐ |
-| US-029 | As an operator a scheduled post ships with my laptop closed | cron tick claims and publishes; nothing depends on my machine | Must | M4 | ☐ |
-| US-030 | As an operator nothing publishes twice | two concurrent ticks, one job → one post | Must | M4 | ☐ |
-| US-031 | As an operator a failed publish retries then parks | 3 attempts with backoff, then `failed` with the platform's own error | Must | M4 | ☐ |
-| US-032 | As an operator slow platform processing does not lose the post | job parks as `awaiting_platform` and resumes on a later tick | Must | M4 | ☐ |
-| US-033 | As an operator I can stop all publishing instantly | kill switch per workspace + global, checked at claim time; queue survives | Must | M4 | ☐ |
-| US-034 | As an operator I can see what is due in the next 24 hours | list with slot times in my timezone | Should | M4 | ☐ |
-| US-035 | As an operator every post has a readable history | append-only log: created, edited, approved, attempts, result | Should | M4 | ☐ |
+| US-026 | As an operator I approve a variant with a slot | approval records user + content hash + time | Must | M4 | ☑ |
+| US-027 | As an operator I approve several items at once | bulk approve writes one audit row per item | Must | M4 | ☑ |
+| US-028 | As an operator an edit after approval invalidates it | variant returns to `review`; publish returns 409 | Must | M4 | ◐ — mismatch resets to `review` and 409s on the token path (tested); the upload button re-approves instead |
+| US-029 | As an operator a scheduled post ships with my laptop closed | cron tick claims and publishes; nothing depends on my machine | Must | M4 | ◐ — `scheduled` entry + `triggers.crons` exist and are tested (`src/worker.ts`, `wrangler.jsonc`; m4 4.1–4.3, `test/cron.test.ts`), so nothing depends on a laptop in code — but the Worker has never been deployed, so no cron has ever fired unattended; blocked on `wrangler login` (m0 5.4, TS-10) |
+| US-030 | As an operator nothing publishes twice | two concurrent ticks, one job → one post | Must | M4 | ☑ |
+| US-031 | As an operator a failed publish retries then parks | 3 attempts with backoff, then `failed` with the platform's own error | Must | M4 | ◐ — 3 attempts + backoff proven, but the terminal state is `dead`; `failed` is the uncertain state |
+| US-032 | As an operator slow platform processing does not lose the post | job parks as `awaiting_platform` and resumes on a later tick | Must | M4 | ☑ — resume implemented (m5 4.3): `runTick` calls `resumeParked`, which moves `awaiting_platform` → `queued` once `run_after` has passed, back through `claim` so lease, attempts and kill switch all apply; "creates one container, not one per tick" tested in `test/publish-instagram.test.ts`. The park/resume cycle is fixture-proven — a live platform's timing is US-041's gap, not this story's |
+| US-033 | As an operator I can stop all publishing instantly | kill switch per workspace + global, checked at claim time; queue survives | Must | M4 | ◐ — both switches checked at claim and the queue survives (tested); no control surface for the workspace flag |
+| US-034 | As an operator I can see what is due in the next 24 hours | list with slot times in my timezone | Should | M4 | ☑ |
+| US-035 | As an operator every post has a readable history | append-only log: created, edited, approved, attempts, result | Should | M4 | ☑ |
 
 ---
 
@@ -150,16 +151,16 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
-| US-036 | As an operator I connect an Instagram channel | token encrypted at rest; channel status `connected` | Must | M5 | ☐ |
-| US-037 | As an operator I connect a Threads channel | same flow; tester access is enough | Must | M5 | ☐ |
-| US-038 | As an operator I connect an X channel | OAuth 1.0a user context; cost shown before first post | Must | M5 | ☐ |
-| US-039 | As an operator I publish now, deliberately | confirmation names the platform and account first | Must | M5 | ☐ |
-| US-040 | As an operator I can see exactly what would be sent | dry run prints the calls; never touches the network | Must | M5 | ☐ |
-| US-041 | As an operator I only believe it when it is verified | post read back from the platform; URL stored; status `published` only then | Must | M5 | ☐ |
-| US-042 | As an operator TikTok gives me an upload pack, not a post | pack file + checklist; completion recorded manually | Must | M5 | ☐ |
-| US-043 | As an operator I hear about a failed scheduled publish | email with platform error + link to the post | Should | M5 | ☐ |
-| US-044 | As an operator an expired token tells me to reconnect | channel flips to `reauth_required`; board shows it | Should | M5 | ☐ |
-| US-045 | As an operator my Instagram/Threads tokens refresh themselves | monthly cron extends them; no manual re-auth | Should | M5 | ☐ |
+| US-036 | As an operator I connect an Instagram channel | token encrypted at rest; channel status `connected` | Must | M5 | ◐ — connect endpoint + encryption work for any platform, but the only connect form is X's; no Meta OAuth, tokens are minted outside the app |
+| US-037 | As an operator I connect a Threads channel | same flow; tester access is enough | Must | M5 | ◐ — same gap as US-036: no Threads connect form, no Meta OAuth; credentials enter through the API only |
+| US-038 | As an operator I connect an X channel | OAuth 1.0a user context; cost shown before first post | Must | M5 | ☑ |
+| US-039 | As an operator I publish now, deliberately | confirmation names the platform and account first | Must | M5 | ◐ — the server requires `{platform, account}` and refuses a mismatch (tested), but the dialog renders the platform only; the account is never shown |
+| US-040 | As an operator I can see exactly what would be sent | dry run prints the calls; never touches the network | Must | M5 | ◐ — the dry run is offline and the response lists the calls, but the dialog shows only the call count, not the calls |
+| US-041 | As an operator I only believe it when it is verified | post read back from the platform; URL stored; status `published` only then | Must | M5 | ◐ — read-back is the only path to `published` and is fixture-tested; no live platform publish observed end-to-end |
+| US-042 | As an operator TikTok gives me an upload pack, not a post | pack file + checklist; completion recorded manually | Must | M5 | ☑ |
+| US-043 | As an operator I hear about a failed scheduled publish | email with platform error + link to the post | Should | M5 | ◐ — message composed and sent from the tick with error, account, link and one action (tested), but delivery is the dev outbox: Resend is deferred, no inbox has received one |
+| US-044 | As an operator an expired token tells me to reconnect | channel flips to `reauth_required`; board shows it | Should | M5 | ◐ — flip + audit row tested; channels page and post detail say "reconnect required", but the board shows no channel state |
+| US-045 | As an operator my Instagram/Threads tokens refresh themselves | monthly cron extends them; no manual re-auth | Should | M5 | ◐ — Instagram refresh runs on the cron tick (tested); Threads tokens are never refreshed — the pass filters `platform = instagram` |
 
 ---
 
@@ -167,10 +168,10 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
-| US-046 | As an operator I upload an image once | dedupe by content hash; public URL returned | Must | M6 | ☐ |
-| US-047 | As an operator a bad file is refused | MIME from magic bytes; SVG rejected outright | Must | M6 | ☐ |
-| US-048 | As an operator my photos do not leak location | metadata stripped before upload, re-validated server-side | Must | M6 | ☐ |
-| US-049 | As an operator unused media gets cleaned up | unreferenced non-postable media purged after 30 days | Could | M6 | ☐ |
+| US-046 | As an operator I upload an image once | dedupe by content hash; public URL returned | Must | M6 | ◐ — mint → record (dedupe on the stripped hash, one object, URL derived from `R2_PUBLIC_BASE`) is implemented and tested end-to-end against miniflare R2 + D1, and `/intake` drives it, but the presigned PUT has never been executed by any client — no live upload, no real R2; m6 1.1 defers that proof to deploy |
+| US-047 | As an operator a bad file is refused | MIME from magic bytes; SVG rejected outright | Must | M6 | ☑ |
+| US-048 | As an operator my photos do not leak location | metadata stripped before upload, re-validated server-side | Must | M6 | ☑ — the served object is stripped and re-checked in tests (strip is idempotent, stored size read back); the strip runs at record, so the original lives only at an unguessable landing key until then; video is stored as uploaded — stated non-goal (m6 1.4) |
+| US-049 | As an operator unused media gets cleaned up | unreferenced non-postable media purged after 30 days | Could | M6 | ☑ |
 
 ---
 
@@ -179,8 +180,8 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
 | US-050 | As an agent I read the queue as JSON | `GET /api/v1/queue` returns `{ok, result, log}` in one batched read | Must | M2 | ☐ |
-| US-051 | As an agent I approve and publish with the same envelope | identical verbs to the CLI; `dry_run` honoured | Must | M4 | ☐ |
-| US-052 | As an agent I get an honest status code | `/api/v1` codes stable: 401/403/404-in-workspace/409/413/422/429 | Should | M4 | ☐ |
+| US-051 | As an agent I approve and publish with the same envelope | identical verbs to the CLI; `dry_run` honoured | Must | M4 | ◐ — publish verb + envelope exist for tokens; approval is deliberately cookie-only and `dry_run` exists nowhere |
+| US-052 | As an agent I get an honest status code | `/api/v1` codes stable: 401/403/404-in-workspace/409/413/422/429 | Should | M4 | ◐ — 401/403/404/409/413/422 are emitted by routes; `429` is in the vocabulary but no route returns it |
 | US-053 | As an operator I get one digest instead of opening the app | daily brief: due, approved, blocked, needs-eyes — numbered for batch reply | Should | v1.5 | ☐ |
 
 ---

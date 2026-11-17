@@ -1,0 +1,13 @@
+{
+  "downloads": [{ "status": 200, "sizeBytes": 6291456 }],
+  "replies": [
+    {
+      "status": 200,
+      "body": { "media_id": 1740000000000000002, "media_id_string": "1740000000000000002" }
+    },
+    {
+      "status": 400,
+      "body": { "errors": [{ "code": 44, "message": "media parameter is missing." }] }
+    }
+  ]
+}

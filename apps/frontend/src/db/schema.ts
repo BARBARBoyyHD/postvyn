@@ -9,7 +9,7 @@
  * JSON is TEXT read with `json_extract()`.
  */
 import { sql } from "drizzle-orm";
-import { blob, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const nowMs = sql`(unixepoch() * 1000)`;
 
@@ -117,7 +117,16 @@ export const media = sqliteTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     hash: text("hash").notNull(),
+    /**
+     * The value the row was written with: an R2 key for anything uploaded, a vault path for media
+     * imported from v0.1. Kept as-is — an import dispute is worse than an ugly field.
+     */
     key: text("key").notNull(),
+    /**
+     * The R2 key for a row whose `key` is still a vault path — set when that media is uploaded again
+     * (m6 2.4). Null for every row uploaded by this app; `objectKey()` reads both.
+     */
+    r2Key: text("r2_key"),
     mime: text("mime").notNull(),
     bytes: integer("bytes").notNull(),
     width: integer("width"),
@@ -236,6 +245,9 @@ export const jobs = sqliteTable(
     attempts: integer("attempts").notNull().default(0),
     runAfter: integer("run_after").notNull().default(nowMs),
     leaseUntil: integer("lease_until"),
+    /** The latest attempt's window; `attempts` counts them, `activity_log` keeps the history. */
+    attemptStartedAt: integer("attempt_started_at"),
+    attemptFinishedAt: integer("attempt_finished_at"),
     lastError: text("last_error"),
     createdAt: integer("created_at").notNull().default(nowMs),
     updatedAt: integer("updated_at").notNull().default(nowMs),
@@ -258,6 +270,8 @@ export const publishResults = sqliteTable(
     url: text("url"),
     raw: text("raw"),
     state: text("state", { enum: ["succeeded", "failed", "uncertain"] }).notNull(),
+    /** What the send was estimated to cost, in USD, kept so the price shown is the price spent. */
+    estimatedCostUsd: real("estimated_cost_usd"),
     createdAt: integer("created_at").notNull().default(nowMs),
   },
   (t) => [

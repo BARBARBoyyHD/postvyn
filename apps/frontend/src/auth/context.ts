@@ -40,8 +40,8 @@ export async function resolveContext(
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) return null;
 
-  // Provision on the first authenticated session *after* verification, not at signup: a typo'd
-  // address then never becomes a phantom tenant (design decision).
+  // Provision on the first authenticated request that needs a workspace, not at signup: an account
+  // that never comes back then never becomes a phantom tenant.
   const membership = await identityStore(env).ensureWorkspace(
     session.user.id,
     session.user.name?.trim() || session.user.email.split("@")[0] || "Workspace",

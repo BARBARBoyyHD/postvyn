@@ -1,0 +1,13 @@
+{
+  "replies": [
+    { "status": 200, "body": { "id": "container-4242" } },
+    {
+      "status": 200,
+      "body": {
+        "id": "container-4242",
+        "status": "ERROR",
+        "error_message": "The media could not be processed: video duration is below the 3 second minimum."
+      }
+    }
+  ]
+}

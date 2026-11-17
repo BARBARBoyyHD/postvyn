@@ -1,0 +1,15 @@
+{
+  "replies": [
+    {
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "Invalid OAuth access token - Cannot parse access token",
+          "type": "OAuthException",
+          "code": 190,
+          "fbtrace_id": "C9pL2vWq7Nx"
+        }
+      }
+    }
+  ]
+}

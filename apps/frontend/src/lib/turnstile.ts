@@ -1,8 +1,9 @@
 /**
  * Turnstile verification.
  *
- * Both endpoints that call this send email to an address the caller chose. Without a bot check that
- * is a free mail-bombing primitive pointed at third parties from a verified domain — and the fastest
+ * The guard covers signup (an endpoint that creates accounts and hashes passwords) and the reset
+ * endpoints, which send email to an address the caller chose. Without a bot check the reset pair is
+ * a free mail-bombing primitive pointed at third parties from a verified domain — and the fastest
  * way to lose that domain's sending reputation permanently.
  *
  * Fails closed: a missing secret is a configuration error, not a reason to skip the check.

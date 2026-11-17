@@ -1,27 +1,28 @@
 ---
 title: Postvyn — vault dashboard
 type: dashboard
-updated: 2026-11-15
+updated: 2026-11-17
 tags: [postvyn, home]
 ---
 
 # 🗂️ Postvyn
 
 > [!info] This repo is a vault
-> Open the folder `D:/project/nextjs/postvyn` as a vault. Vault root = repo root, so specs,
-> journal and code share one graph. `apps/` is still empty — M0 has not started.
+> Open the folder as a vault (vault root = repo root), so specs, journal and code share one graph.
+> `apps/frontend` is the project: M0–M5 are applied through their code tasks, M6 (media + cutover) has
+> its code and its runbook in place and is waiting on a week of live posts.
 
 ## Now
 
 | | |
 |---|---|
-| **Milestone** | `M3 — Authoring` **17/30** applied · `M2` **38/42** · `M1` **25/35** → [[004-PEP#3. Milestones & Phases\|PEP §3]] |
-| **Stories** | 73 tracked (58 user + 15 platform) · 49 Must · **7 ☑ · 8 ◐** → [[006-USER-STORIES]] |
-| **Next action** | finish M3's editor (autosave, overrides, media picker) then M4 approval + job queue |
-| **Blocked on** | `wrangler login` before any deploy or remote migration · domain decision (OI-5) · Resend + Meta credentials → [[005-REQUIREMENTS]] |
-| **Open change** | `m0` **40/42** · `m1` **29/35** · `m2` **41/42** · `m3` **29/30** · `agent-intake` **28/28** |
-| **Specified, not started** | `m3-authoring` 8 req · `m4-approval-and-jobs` 9 req · `m5-publishing` 9 req · `m6-media-and-cutover` 6 req — 32 req / 76 scenarios / 120 tasks |
-| **Applied since** | `m3-authoring` **17/30** (spec engine live) · `agent-intake` **24/28** (upload + token + draft, end to end) |
+| **Milestone** | `M5 — Shipping` **30/31** applied (code tasks done; close-out 8.2 waits on the first live X post) · `M6 — Cutover` **24/27** (upload/serving/hygiene, runbook, `tools/publish` frozen, lessons vaulted, m2–m4 archived; 5.1/5.4/5.5 blocked on live posts) · `M4` **32/32** archived → [[004-PEP#3. Milestones & Phases\|PEP §3]] |
+| **Stories** | 73 tracked (58 user + 15 platform) · 49 Must · **27 ☑ · 28 ◐** → [[006-USER-STORIES]] |
+| **Next action** | make the first live publish per platform — M5's exit criterion, and what unblocks recording real X costs — then the M6 cutover week (5.1–5.5) and 5.5's keep-or-delete call on `tools/publish` |
+| **Blocked on** | a real week of live posts before M6 5.1/5.4/5.5 can move · `wrangler login` before any deploy, remote migration or an unattended cron (US-029) · first GitHub push (m0 6.5) · domain decision (OI-5) · Resend + Meta credentials → [[005-REQUIREMENTS]]. The only open code tasks are three m1 partials: 3.2 Turnstile production assertion, 6.4 per-role endpoint tests, 7.1 reset/revoke-all audit |
+| **Open change** | `m0` **40/42** · `m1` **29/35** · `m5` **30/31** · `m6` **24/27** |
+| **Specified, not started** | `m6-media-and-cutover` — code is in and the runbook exists; what is left is the cutover week. `m2`/`m3`/`m4` archived 2026-11-17; `m5` stays open until its first live X post (8.2) |
+| **Applied since** | `m2-vault-import-and-board` **42/42**, `m3-authoring` **30/30**, `m4-approval-and-jobs` **32/32** — archived 2026-11-17 (importer + board, composer + spec engine, approvals + cron + kill switch) · `m5-publishing` **30/31** (channels, IG/Threads/X adapters, TikTok pack, failure email) · `m6` **24/27** (R2 uploads, serving, purge, [[runbook]], lessons vaulted) |
 
 ## Specs
 
@@ -32,8 +33,10 @@ tags: [postvyn, home]
 | [[004-PEP]] | who/when, phases M0–M6, risks R1–R13 | 0.1 |
 | [[005-REQUIREMENTS]] | what must exist before M0 | 0.1 + §13 |
 | [[006-USER-STORIES]] | the story tracker; what "done" means | 0.1 |
+| [[runbook]] | what to do at 11pm: connect, rotate, recover, re-import, restore | — |
 
-`002` is deliberately missing — no BRD.
+`002` is deliberately missing — no BRD. `runbook` is not a spec: it describes commands that exist in
+this repo, and its §6 lists the operations the app does not have yet.
 
 ## The shape of the thing
 

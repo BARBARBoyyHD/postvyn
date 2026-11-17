@@ -12,16 +12,20 @@
  * platform exists. The stub can be told to publish, to park, or to fail ambiguously.
  */
 import { env } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { runTick } from "@/db/tick";
+import { runTick, publishVariant } from "@/db/tick";
 import { jobs, LEASE_MS, MAX_ATTEMPTS } from "@/db/jobs";
 import { approvals } from "@/db/approvals";
+import { credentialStore } from "@/db/credentials";
 import { hashParts, variantHash } from "@/lib/approval";
-import type { Publisher, PublishInput, PublishOutcome } from "@/publishers/port";
+import type { Publisher, PublishInput, PublishResult } from "@/publishers/port";
 import type { WorkerEnv } from "@/lib/env";
 
-const testEnv = env as unknown as WorkerEnv;
+const testEnv: WorkerEnv = {
+  DB: env.DB,
+  TOKEN_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+};
 
 const WS = "ws-m4";
 const BRAND = "brand-m4";
@@ -32,11 +36,17 @@ const USER = "user-m4";
 
 const ctx = { workspaceId: WS, userId: USER, role: "owner" as const };
 
-function stub(outcome: PublishOutcome | ((input: PublishInput) => PublishOutcome)): Publisher {
+function stub(outcome: PublishResult | ((input: PublishInput) => PublishResult)): Publisher {
   return {
     platform: "x",
+    async preview() {
+      return { calls: [], estimatedCostUsd: null, notes: [] };
+    },
     async publish(input) {
       return typeof outcome === "function" ? outcome(input) : outcome;
+    },
+    async verify(result) {
+      return result;
     },
   };
 }
@@ -68,6 +78,15 @@ async function seed() {
   )
     .bind(VARIANT, POST, CHANNEL, now, now)
     .run();
+
+  // The publish path refuses a channel it cannot authenticate as (M5), so the queue's happy path
+  // needs real credentials — encrypted with a fixed test key, never a real one.
+  await credentialStore(testEnv).connect(ctx, {
+    brandId: BRAND,
+    platform: "x",
+    accountRef: "m4",
+    credentials: { accessToken: "m4-test-token" },
+  });
 }
 
 /** Clear only the tables this file writes; activity_log is append-only and must not be deleted. */
@@ -156,7 +175,7 @@ describe("the queue", () => {
     let calls = 0;
     const publisher = stub(() => {
       calls += 1;
-      return { state: "published", platformPostId: "x_1", url: "https://x.test/1" };
+      return { status: "published", platformPostId: "x_1", permalink: "https://x.test/1" };
     });
 
     // claimed serially, as two ticks would: the second finds nothing because the first took it
@@ -170,7 +189,7 @@ describe("the queue", () => {
 
   it("does not claim a job whose slot is in the future", async () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() + 3_600_000 });
-    const report = await runTick(testEnv, { publisher: stub({ state: "published", platformPostId: "x", url: null }) });
+    const report = await runTick(testEnv, { publisher: stub({ status: "published", platformPostId: "x", permalink: null }) });
     expect(report.claimed).toBe(0);
   });
 
@@ -182,7 +201,7 @@ describe("the queue", () => {
     const report = await runTick(testEnv, {
       publisher: stub(() => {
         calls += 1;
-        return { state: "published", platformPostId: "x", url: null };
+        return { status: "published", platformPostId: "x", permalink: null };
       }),
     });
 
@@ -199,7 +218,7 @@ describe("the queue", () => {
   it("records a successful publish and closes the post", async () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
     await runTick(testEnv, {
-      publisher: stub({ state: "published", platformPostId: "x_9", url: "https://x.test/9" }),
+      publisher: stub({ status: "published", platformPostId: "x_9", permalink: "https://x.test/9" }),
     });
 
     const post = await env.DB.prepare("select status from posts where id = ?").bind(POST).first<{ status: string }>();
@@ -215,7 +234,7 @@ describe("the queue", () => {
   it("parks when the platform is still working", async () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
     await runTick(testEnv, {
-      publisher: stub({ state: "awaiting_platform", reason: "container not ready", resumeAfterMs: 300_000 }),
+      publisher: stub({ status: "awaiting_platform", detail: "container not ready", resume: { afterMs: 300_000 } }),
     });
 
     const job = await env.DB.prepare("select state, attempts, last_error from jobs").first<{
@@ -234,7 +253,7 @@ describe("the queue", () => {
     const store = jobs(testEnv);
 
     const first = await runTick(testEnv, {
-      publisher: stub({ state: "failed", error: "boom", ambiguous: false }),
+      publisher: stub({ status: "failed", platformError: { code: "x_500", message: "boom" } }),
     });
     expect(first.outcomes[0].verdict).toBe("failed");
 
@@ -250,7 +269,7 @@ describe("the queue", () => {
     // bring it forward and fail again until the limit
     for (let attempt = 2; attempt <= MAX_ATTEMPTS; attempt += 1) {
       await env.DB.prepare("update jobs set run_after = ? where state = 'queued'").bind(Date.now() - 1).run();
-      await runTick(testEnv, { publisher: stub({ state: "failed", error: "boom", ambiguous: false }) });
+      await runTick(testEnv, { publisher: stub({ status: "failed", platformError: { code: "x_500", message: "boom" } }) });
     }
 
     const final = await env.DB.prepare("select state, attempts from jobs").first<{ state: string; attempts: number }>();
@@ -261,21 +280,49 @@ describe("the queue", () => {
 
   it("treats an ambiguous failure as uncertain and never retries it", async () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
-    await runTick(testEnv, {
-      publisher: stub({ state: "failed", error: "socket closed after send", ambiguous: true }),
+
+    let calls = 0;
+    const publisher = stub(() => {
+      calls += 1;
+      return { status: "uncertain", detail: "socket closed after send" };
     });
 
-    const job = await env.DB.prepare("select state, last_error from jobs").first<{
+    await runTick(testEnv, { publisher });
+
+    const job = await env.DB.prepare("select state, attempts, lease_until, last_error from jobs").first<{
       state: string;
+      attempts: number;
+      lease_until: number | null;
       last_error: string;
     }>();
     expect(job?.state).toBe("failed");
+    expect(job?.attempts).toBe(1);
     expect(job?.last_error).toContain("uncertain");
+    // No lease is held, so nothing can ever "expire" into a retry.
+    expect(job?.lease_until).toBeNull();
 
     const result = await env.DB.prepare("select state from publish_results where variant_id = ?")
       .bind(VARIANT)
       .first<{ state: string }>();
     expect(result?.state).toBe("uncertain");
+
+    // Two ticks' worth of chances for a retry that must never come: neither the queue nor a lease
+    // sweep may touch it, because a duplicate post cannot be undone from this side.
+    await env.DB.prepare("update jobs set run_after = ? where id is not null").bind(Date.now() - 1).run();
+    const after = await runTick(testEnv, { publisher });
+    expect(after.claimed).toBe(0);
+    expect(calls).toBe(1);
+
+    const swept = await jobs(testEnv).reclaimExpired(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    expect(swept).toEqual({ requeued: [], dead: [] });
+
+    const settled = await env.DB.prepare("select state from jobs").first<{ state: string }>();
+    expect(settled?.state).toBe("failed");
+
+    const post = await env.DB.prepare("select status from posts where id = ?")
+      .bind(POST)
+      .first<{ status: string }>();
+    expect(post?.status).not.toBe("published");
   });
 
   it("reclaims a job whose lease expired", async () => {
@@ -293,7 +340,7 @@ describe("the queue", () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
 
     const report = await runTick(testEnv, {
-      publisher: stub({ state: "published", platformPostId: "x", url: null }),
+      publisher: stub({ status: "published", platformPostId: "x", permalink: null }),
       globalEnabled: false,
     });
     expect(report.claimed).toBe(0);
@@ -304,13 +351,13 @@ describe("the queue", () => {
     // and the workspace switch is checked inside the claim, not by the caller
     await env.DB.prepare("update workspaces set publishing_enabled = 0 where id = ?").bind(WS).run();
     const withWorkspaceOff = await runTick(testEnv, {
-      publisher: stub({ state: "published", platformPostId: "x", url: null }),
+      publisher: stub({ status: "published", platformPostId: "x", permalink: null }),
     });
     expect(withWorkspaceOff.claimed).toBe(0);
 
     await env.DB.prepare("update workspaces set publishing_enabled = 1 where id = ?").bind(WS).run();
     const resumed = await runTick(testEnv, {
-      publisher: stub({ state: "published", platformPostId: "x", url: null }),
+      publisher: stub({ status: "published", platformPostId: "x", permalink: null }),
     });
     expect(resumed.claimed).toBe(1);
   });
@@ -326,5 +373,129 @@ describe("the queue", () => {
     }>();
     expect(job?.state).toBe("awaiting_platform");
     expect(job?.last_error).toContain("M5");
+  });
+
+  it("records when the attempt started and finished", async () => {
+    await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
+
+    const startedAfter = Date.now();
+    await runTick(testEnv, {
+      publisher: stub({ status: "published", platformPostId: "x_7", permalink: null }),
+    });
+
+    const row = await env.DB.prepare("select attempt_started_at, attempt_finished_at from jobs").first<{
+      attempt_started_at: number;
+      attempt_finished_at: number;
+    }>();
+    expect(row?.attempt_started_at).toBeGreaterThanOrEqual(startedAfter);
+    expect(row?.attempt_finished_at).toBeGreaterThanOrEqual(row!.attempt_started_at);
+  });
+});
+
+/**
+ * `one_publish_per_variant` (migration 0011) is the last line of defence against a duplicate post.
+ *
+ * The queue is written so this should never be reached: a claim is a guarded single UPDATE, an
+ * ambiguous answer is never retried, and `publishVariant` verifies before it claims success. But
+ * "should never be reached" is exactly the kind of statement a retry bug disproves at 3 a.m., so the
+ * constraint is proven here twice: through the code path, and against the database directly.
+ */
+describe("one success per variant, even under a retry bug", () => {
+  beforeEach(async () => {
+    await seed();
+    await resetJobs();
+    await env.DB.prepare("update variants set caption = 'the caption' where id = ?").bind(VARIANT).run();
+  });
+
+  const succeeding = () =>
+    stub({ status: "published", platformPostId: "x_1", permalink: "https://x.test/1" });
+
+  it("two publish attempts in a row record one success, not two", async () => {
+    await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
+
+    await publishVariant(testEnv, VARIANT, { publisher: succeeding() });
+    await publishVariant(testEnv, VARIANT, { publisher: succeeding() });
+
+    const counted = await env.DB.prepare(
+      "select count(*) as n from publish_results where variant_id = ? and state = 'succeeded'",
+    )
+      .bind(VARIANT)
+      .first<{ n: number }>();
+    expect(Number(counted?.n)).toBe(1);
+  });
+
+  it("two attempts running at once still record one success", async () => {
+    await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
+
+    await Promise.all([
+      publishVariant(testEnv, VARIANT, { publisher: succeeding() }),
+      publishVariant(testEnv, VARIANT, { publisher: succeeding() }),
+    ]);
+
+    const rows = await env.DB.prepare("select state from publish_results where variant_id = ?")
+      .bind(VARIANT)
+      .all<{ state: string }>();
+    expect(rows.results.filter((row) => row.state === "succeeded")).toHaveLength(1);
+  });
+
+  it("the database refuses a second success whatever the code believes", async () => {
+    const insert = (id: string) =>
+      env.DB.prepare(
+        "insert into publish_results (id, variant_id, platform, state, url) values (?, ?, 'x', 'succeeded', 'https://x.test/1')",
+      )
+        .bind(id, VARIANT)
+        .run();
+
+    await insert("pub_first");
+    await expect(insert("pub_second")).rejects.toThrow(/UNIQUE constraint failed/i);
+  });
+});
+
+/**
+ * "Nothing noisy" made concrete, because the phrase proves nothing on its own: the tick claims nothing,
+ * the report is empty, the row is byte-identical, the publisher is never called, and not one line is
+ * logged. A tick every five minutes must cost nothing when there is nothing to do.
+ */
+describe("a tick with no due work", () => {
+  beforeEach(async () => {
+    await seed();
+    await resetJobs();
+    await env.DB.prepare("update variants set caption = 'the caption' where id = ?").bind(VARIANT).run();
+  });
+
+  it("is a no-op that says nothing", async () => {
+    // Approved for tomorrow: queued, visible, and not due.
+    await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() + 3_600_000 });
+    const before = await env.DB.prepare("select * from jobs where id = (select id from jobs limit 1)").first<
+      Record<string, unknown>
+    >();
+    expect(before?.state).toBe("queued");
+
+    let calls = 0;
+    const publisher = stub(() => {
+      calls += 1;
+      return { status: "published", platformPostId: "x", permalink: null };
+    });
+
+    const noise = [vi.spyOn(console, "log"), vi.spyOn(console, "warn"), vi.spyOn(console, "error")].map(
+      (spy) => spy.mockImplementation(() => undefined),
+    );
+    // Prove the instrument before trusting it: a "nothing was logged" assertion over a broken spy passes.
+    console.log("probe");
+    expect(noise[0].mock.calls).toHaveLength(1);
+    for (const spy of noise) spy.mockClear();
+
+    const report = await runTick(testEnv, { publisher });
+
+    expect(report).toEqual({ reclaimed: [], dead: [], claimed: 0, outcomes: [] });
+    expect(calls).toBe(0);
+    expect(noise.flatMap((spy) => spy.mock.calls)).toEqual([]);
+
+    const after = await env.DB.prepare("select * from jobs where id = (select id from jobs limit 1)").first<
+      Record<string, unknown>
+    >();
+    expect(after).toEqual(before);
+
+    for (const spy of noise) spy.mockRestore();
   });
 });

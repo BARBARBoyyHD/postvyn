@@ -46,10 +46,42 @@ export function IntakeForm({ channels }: { channels: Channel[] }) {
     setMessage(null);
     setPostId(null);
 
-    const upload = await fetch("/api/v1/media", {
-      method: "POST",
-      headers: { "content-type": "application/octet-stream", "x-postvyn-filename": file.name },
+    // Three steps, because the bytes never touch the Worker: mint a URL, PUT the file to it, then ask
+    // the server to record what landed (m6 1.1/1.2). The type the browser claims is only a hint —
+    // the record step reads the bytes and refuses a mismatch.
+    const minted = (await (
+      await fetch("/api/v1/media", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filename: file.name, mime: file.type, bytes: file.size }),
+      })
+    ).json()) as {
+      ok?: boolean;
+      result?: { uploadId: string; url: string; mime: string };
+      error?: string;
+      detail?: unknown;
+    };
+    if (!minted.ok || !minted.result) {
+      setBusy(false);
+      setMessage(`upload refused: ${minted.error ?? "unknown"}`);
+      return;
+    }
+
+    const put = await fetch(minted.result.url, {
+      method: "PUT",
+      headers: { "content-type": minted.result.mime },
       body: file,
+    });
+    if (!put.ok) {
+      setBusy(false);
+      setMessage(`storage refused the file: ${put.status} ${put.statusText}`);
+      return;
+    }
+
+    const upload = await fetch(`/api/v1/media/${minted.result.uploadId}/record`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mime: minted.result.mime }),
     });
     const uploaded = (await upload.json()) as {
       ok?: boolean;

@@ -11,8 +11,16 @@ import { describe, expect, it } from "vitest";
 
 import { GET as getBrands, POST as postBrand } from "@/app/api/v1/brands/route";
 import { PATCH as patchBrand } from "@/app/api/v1/brands/[id]/route";
+import { DELETE as deleteChannel, GET as getChannels, POST as postChannel } from "@/app/api/v1/channels/route";
+import { GET as getDueJobs } from "@/app/api/v1/jobs/due/route";
+import { POST as postPublish } from "@/app/api/v1/posts/[id]/publish/route";
 import { GET as getQueue } from "@/app/api/v1/queue/route";
 import { GET as getPost } from "@/app/api/v1/posts/[id]/route";
+import { GET as getTiktokPack } from "@/app/api/v1/variants/[id]/tiktok-pack/route";
+import { POST as postTiktokComplete } from "@/app/api/v1/variants/[id]/tiktok-complete/route";
+import { POST as postBatchApprove } from "@/app/api/v1/variants/approve/route";
+import { POST as postMediaRecord } from "@/app/api/v1/media/[id]/record/route";
+import { POST as postMediaMint } from "@/app/api/v1/media/route";
 
 type Handler = (request: Request, context: { params: Promise<Record<string, string>> }) => Promise<Response>;
 
@@ -27,10 +35,60 @@ const PROTECTED: { name: string; handler: Handler; method: string; path: string 
   },
   { name: "GET /api/v1/queue", handler: getQueue as Handler, method: "GET", path: "/api/v1/queue" },
   {
+    name: "GET /api/v1/jobs/due",
+    handler: getDueJobs as Handler,
+    method: "GET",
+    path: "/api/v1/jobs/due",
+  },
+  {
+    name: "POST /api/v1/variants/approve",
+    handler: postBatchApprove,
+    method: "POST",
+    path: "/api/v1/variants/approve",
+  },
+  {
     name: "GET /api/v1/posts/:id",
     handler: getPost as Handler,
     method: "GET",
     path: "/api/v1/posts/post_zavron_2026-10-about-zavron",
+  },
+  {
+    name: "POST /api/v1/posts/:id/publish",
+    handler: postPublish as Handler,
+    method: "POST",
+    path: "/api/v1/posts/post_zavron_2026-10-about-zavron/publish",
+  },
+  {
+    name: "GET /api/v1/variants/:id/tiktok-pack",
+    handler: getTiktokPack as Handler,
+    method: "GET",
+    path: "/api/v1/variants/var_zavron_tiktok/tiktok-pack",
+  },
+  {
+    name: "POST /api/v1/variants/:id/tiktok-complete",
+    handler: postTiktokComplete as Handler,
+    method: "POST",
+    path: "/api/v1/variants/var_zavron_tiktok/tiktok-complete",
+  },
+  { name: "GET /api/v1/channels", handler: getChannels as Handler, method: "GET", path: "/api/v1/channels" },
+  {
+    name: "POST /api/v1/channels",
+    handler: postChannel as Handler,
+    method: "POST",
+    path: "/api/v1/channels",
+  },
+  {
+    name: "DELETE /api/v1/channels",
+    handler: deleteChannel as Handler,
+    method: "DELETE",
+    path: "/api/v1/channels?id=00000000-0000-4000-8000-0000000000c1",
+  },
+  { name: "POST /api/v1/media", handler: postMediaMint as Handler, method: "POST", path: "/api/v1/media" },
+  {
+    name: "POST /api/v1/media/:id/record",
+    handler: postMediaRecord as Handler,
+    method: "POST",
+    path: "/api/v1/media/upl_0000000000ab/record",
   },
 ];
 
