@@ -11,7 +11,7 @@ aliases: [USER-STORIES, 006, stories]
 
 # User Stories — Postvyn
 
-**Version:** 0.3
+**Version:** 0.4
 **Date:** 2026-Nov-15
 **Status:** Living document — expected to change
 **Derived from:** PRD v0.1 (`001-PRD.md`), ITA v0.3 (`003-ITA.md`), PEP v0.1 (`004-PEP.md`)
@@ -31,6 +31,7 @@ aliases: [USER-STORIES, 006, stories]
 | ☐ | not started |
 | ◐ | in progress (code exists, not demonstrable end-to-end) |
 | ☑ | done — **merged, and demonstrable in staging against a test account** |
+| ✕ | removed or superseded — the row stays for history and is never ticked |
 
 Rules:
 
@@ -71,12 +72,12 @@ Rules:
 | E2 Import & board | M2 | 6 | 5 |
 | E3 Authoring | M3 | 9 | 6 |
 | E4 Approval & scheduling | M4 | 10 | 8 |
-| E5 Publishing | M5 | 10 | 7 |
+| E5 Publishing | M5 | 15 | 12 |
 | E6 Media | M6 | 4 | 3 |
 | E7 Agent surface | M2–M4 (+1 at v1.5) | 4 | 2 |
 | E8 Later | v1.5–v2 | 5 | 0 |
 | E0 Platform enablement *(TS items, §12)* | M0–M6 | 15 | 11 |
-| **Total** | | **73** | **49** |
+| **Total** | | **78** | **54** |
 
 **M0 has no *user* stories** — its work is the `TS-` set in §12 (schema, scoped repository, CI, env
 schema). Infrastructure has no user-visible behaviour, so it gets a task-story with a proof line
@@ -120,8 +121,8 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 |---|---|---|---|---|---|
 | US-017 | As an operator I create a post with title, pillar and format | post saved in `drafting` | Must | M3 | ☑ |
 | US-018 | As an operator I add one variant per target platform | variants independent; media order per variant | Must | M3 | ☑ |
-| US-019 | As an operator the counter counts the way the platform does | X: a URL costs 23 chars regardless of length | Must | M3 | ☑ |
-| US-020 | As an operator I keep hashtags where the platform wants them | IG → first comment; Threads/X → in the caption; budget includes them | Must | M3 | ◐ — X's count leaves its hashtags out |
+| US-019 | As an operator the counter counts the way the platform does | each platform's rule from the spec engine — YouTube counts UTF-8 bytes (X's 23-char URL pricing left with X, 2026-11-17) | Must | M3 | ☑ |
+| US-020 | As an operator I keep hashtags where the platform wants them | IG → first comment; Threads/YouTube → in the caption; budget includes them | Must | M3 | ◐ — the X-specific count gap left with X (2026-11-17); no other platform gap recorded |
 | US-021 | As an operator I attach media from the library | reorder for carousels; size/dimension warnings per platform | Must | M3 | ☑ |
 | US-022 | As an operator a spec error blocks me before publishing | hard error names the field and blocks; warning allows with a typed reason | Must | M3 | ◐ — approve/publish never check the verdict |
 | US-023 | As an operator my draft saves itself | autosave ≤5 s debounce; no lost work on refresh | Should | M3 | ◐ — refresh drops the pending save, no flush |
@@ -151,9 +152,9 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
-| US-036 | As an operator I connect an Instagram channel | token encrypted at rest; channel status `connected` | Must | M5 | ◐ — connect endpoint + encryption work for any platform, but the only connect form is X's; no Meta OAuth, tokens are minted outside the app |
+| US-036 | As an operator I connect an Instagram channel | token encrypted at rest; channel status `connected` | Must | M5 | ◐ — connect endpoint + encryption work for any platform, but the only connect form is YouTube's (X's left with X, 2026-11-17); no Meta OAuth, tokens are minted outside the app |
 | US-037 | As an operator I connect a Threads channel | same flow; tester access is enough | Must | M5 | ◐ — same gap as US-036: no Threads connect form, no Meta OAuth; credentials enter through the API only |
-| US-038 | As an operator I connect an X channel | OAuth 1.0a user context; cost shown before first post | Must | M5 | ☑ |
+| US-038 | As an operator I connect an X channel | OAuth 1.0a user context; cost shown before first post | Must | M5 | ✕ — **removed 2026-11-17**: X left the platform lineup (`platform-swap-youtube`); row kept for history, can never be ticked |
 | US-039 | As an operator I publish now, deliberately | confirmation names the platform and account first | Must | M5 | ◐ — the server requires `{platform, account}` and refuses a mismatch (tested), but the dialog renders the platform only; the account is never shown |
 | US-040 | As an operator I can see exactly what would be sent | dry run prints the calls; never touches the network | Must | M5 | ◐ — the dry run is offline and the response lists the calls, but the dialog shows only the call count, not the calls |
 | US-041 | As an operator I only believe it when it is verified | post read back from the platform; URL stored; status `published` only then | Must | M5 | ◐ — read-back is the only path to `published` and is fixture-tested; no live platform publish observed end-to-end |
@@ -161,6 +162,11 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 | US-043 | As an operator I hear about a failed scheduled publish | email with platform error + link to the post | Should | M5 | ◐ — message composed and sent from the tick with error, account, link and one action (tested), but delivery is the dev outbox: Resend is deferred, no inbox has received one |
 | US-044 | As an operator an expired token tells me to reconnect | channel flips to `reauth_required`; board shows it | Should | M5 | ◐ — flip + audit row tested; channels page and post detail say "reconnect required", but the board shows no channel state |
 | US-045 | As an operator my Instagram/Threads tokens refresh themselves | monthly cron extends them; no manual re-auth | Should | M5 | ◐ — Instagram refresh runs on the cron tick (tested); Threads tokens are never refreshed — the pass filters `platform = instagram` |
+| US-059 | As an operator I connect a YouTube channel | three OAuth2 values entered in the app and encrypted per channel; channel `active` only after a mint succeeds; consent screen In production | Must | M5 | ☐ |
+| US-060 | As an operator I upload a video to YouTube (VOD) | resumable upload survives interruption; `published` only after a `videos.list` read-back stores the platform's id and URL | Must | M5 | ☐ |
+| US-061 | As an operator I upload a Short | square/vertical ≤ 3 min media is categorized as a Short, `#Shorts` applied per convention, and the preview says which way it will land | Must | M5 | ☐ |
+| US-062 | As an operator the quota cost is shown before I upload | preview states upload slots and read units against the daily allocation and the reset time, before any request | Must | M5 | ☐ |
+| US-063 | As an operator I only believe a YouTube upload when YouTube confirms it | `videos.list` read-back: processed, privacy and title as sent; any disagreement records `uncertain`, never `published` | Must | M5 | ☐ |
 
 ---
 
@@ -249,3 +255,4 @@ unnoticed until M4. The proof column is what keeps them honest.
 | 2026-Nov-15 | 0.1 | First cut: 58 stories across 8 epics, mapped to PEP milestones |
 | 2026-Nov-15 | 0.2 | Added §12 platform task-stories (TS-01…TS-14) for Tailwind, shadcn-pattern primitives, Drizzle, auth/email wiring, CI, cron, R2. Separate ID space so a task never passes as a feature. Totals: 72 items, 48 Must. |
 | 2026-Nov-15 | 0.3 | API surface versioned: `US-050/052` now name `/api/v1`, plus `TS-15` (API skeleton + envelope + status mapping). Totals: 73 items, 49 Must. |
+| 2026-Nov-17 | 0.4 | Platform lineup swap: X removed (`US-038` → ✕ with a dated reason; X examples in `US-019`/`US-020`/`US-036` annotated, never deleted) and YouTube added as `US-059`…`US-063` (connect, VOD, Short, quota-before-upload, read-back). Totals: 78 items, 54 Must. |

@@ -6,9 +6,9 @@
  * as none. One email per *terminal* failure, not per attempt: the retries are the queue's business
  * and telling somebody about each one trains them to ignore the alerts.
  *
- * The recipient is the workspace's owner, because that is who can reconnect a channel or top up
- * credits. A workspace with no owner row is reported rather than silently skipped — an alert nobody
- * receives is worse than no alert, because it looks like coverage.
+ * The recipient is the workspace's owner, because that is who can reconnect a channel or raise the
+ * project's quota. A workspace with no owner row is reported rather than silently skipped — an alert
+ * nobody receives is worse than no alert, because it looks like coverage.
  *
  * Sending never throws into the tick: a failed email must not leave a claimed job stuck until its
  * lease expires. The failure is a value, logged once, and the job goes on being recorded.
@@ -18,7 +18,7 @@ import { and, eq } from "drizzle-orm";
 import * as authSchema from "./auth-schema";
 import { createDb } from "./client";
 import * as s from "./schema";
-import { isCostProblem } from "@/publishers/port";
+import { isQuotaProblem } from "@/publishers/port";
 import type { VariantOutcome } from "./tick";
 import { mailerFrom, type Mailer } from "@/lib/email";
 import type { WorkerEnv } from "@/lib/env";
@@ -39,9 +39,13 @@ function appUrl(env: WorkerEnv): string {
  * email only has to point at the one thing that unblocks it.
  */
 export function suggestedAction(outcome: VariantOutcome): string {
-  // Out of credits is a spending problem, whoever reported it (X answers 402).
-  if (isCostProblem(outcome)) {
-    return "Top up the platform's credits, then set X_CREDITS_CONFIGURED=true so the queue may spend again.";
+  // An exhausted quota is the scarce-resource problem, whoever reports it (YouTube answers 403
+  // quotaExceeded): tomorrow's allocation cannot be created today, so the next step is to wait or ask.
+  if (isQuotaProblem(outcome)) {
+    return (
+      "Wait for the daily quota to reset at midnight Pacific Time, or raise the project's quota in the " +
+      "Google Cloud Console → Quotas page, then retry."
+    );
   }
 
   switch (outcome.verdict) {

@@ -13,7 +13,7 @@ import { ApproveControl } from "@/components/approve-control";
 import { PublishNowButton } from "@/components/publish-now-button";
 import { TiktokPack } from "@/components/tiktok-pack";
 import { repository } from "@/db/repository";
-import { costLabel, usd } from "@/lib/cost";
+import { costLabel } from "@/lib/cost";
 import { formatAttemptDuration } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -287,7 +287,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
           <ol className="mt-3 space-y-2">
             {activity.map((entry) => {
               const reauth = entry.action === "channel.reauth_required";
-              const costBlocked = entry.action === "publish.cost_blocked";
+              const quotaBlocked = entry.action === "publish.quota_blocked";
               const detail = activityDetail(entry.action, entry.detail);
               return (
                 <li key={entry.id} className="flex flex-wrap items-baseline gap-3 text-sm">
@@ -300,7 +300,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
                   {detail ? (
                     <span
                       className={`font-mono text-[10px] ${
-                        reauth || costBlocked ? "text-[#fbbf24]" : "text-zavron-muted"
+                        reauth || quotaBlocked ? "text-[#fbbf24]" : "text-zavron-muted"
                       }`}
                     >
                       {detail}
@@ -363,21 +363,17 @@ function resultColor(state: string): string {
 
 /**
  * The activity log stores every detail as JSON text. Two actions carry something an operator can act
- * on — a spend that was blocked and a credential that expired — so they get words instead of a blob.
+ * on — an exhausted quota and a credential that expired — so they get words instead of a blob.
  */
 function activityDetail(action: string, raw: string | null): string | null {
   if (!raw) return null;
-  if (action !== "publish.cost_blocked" && action !== "channel.reauth_required") return raw;
+  if (action !== "publish.quota_blocked" && action !== "channel.reauth_required") return raw;
 
   try {
     const detail = JSON.parse(raw) as {
-      estimatedCostUsd?: unknown;
       platformError?: { code?: unknown; message?: unknown };
     };
     const parts: string[] = [];
-    if (action === "publish.cost_blocked" && typeof detail.estimatedCostUsd === "number") {
-      parts.push(`${usd(detail.estimatedCostUsd)} estimated`);
-    }
     if (typeof detail.platformError?.message === "string") {
       parts.push(`${String(detail.platformError.code ?? "error")}: ${detail.platformError.message}`);
     }

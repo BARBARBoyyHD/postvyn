@@ -36,6 +36,10 @@ export function specGate(env: Bindings) {
      *
      * A missing channel fails closed: `validate("")` reports "no rule set" as blocked, which is the
      * honest answer for a variant whose platform cannot be determined.
+     *
+     * The post's title travels with the verdict because YouTube publishes it as `snippet.title`: a title
+     * that is empty or over 100 characters is a block on that variant, not a warning (design decision 6,
+     * spec-engine "A title one character over blocks").
      */
     async check(variant: Variant): Promise<SpecGateResult> {
       const [channel] = await db
@@ -44,12 +48,19 @@ export function specGate(env: Bindings) {
         .where(eq(s.channels.id, variant.channelId))
         .limit(1);
 
+      const [post] = await db
+        .select({ title: s.posts.title })
+        .from(s.posts)
+        .where(eq(s.posts.id, variant.postId))
+        .limit(1);
+
       const ids = parseList(variant.mediaIds);
       const mediaRows = ids.length
         ? await db.select().from(s.media).where(inArray(s.media.id, ids))
         : [];
 
       const verdict = validate(channel?.platform ?? "", {
+        title: post?.title ?? "",
         caption: variant.caption,
         hashtags: parseList(variant.hashtags),
         media: mediaRows.map(toFacts),

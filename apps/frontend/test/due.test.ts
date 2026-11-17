@@ -65,11 +65,11 @@ async function seed() {
       WS_B,
     ),
 
-    env.DB.prepare("insert into channels (id, brand_id, platform, account_ref) values (?, ?, 'x', 'due-a')").bind(
+    env.DB.prepare("insert into channels (id, brand_id, platform, account_ref) values (?, ?, 'threads', 'due-a')").bind(
       CHANNEL_A,
       BRAND_A,
     ),
-    env.DB.prepare("insert into channels (id, brand_id, platform, account_ref) values (?, ?, 'x', 'due-b')").bind(
+    env.DB.prepare("insert into channels (id, brand_id, platform, account_ref) values (?, ?, 'threads', 'due-b')").bind(
       CHANNEL_B,
       BRAND_B,
     ),
@@ -111,7 +111,7 @@ describe("due in the next 24 hours", () => {
     expect(jobs.map((job) => job.id)).toEqual([DUE_A]);
     expect(jobs[0]).toMatchObject({
       postTitle: "Due in A",
-      platform: "x",
+      platform: "threads",
       state: "queued",
     });
   });

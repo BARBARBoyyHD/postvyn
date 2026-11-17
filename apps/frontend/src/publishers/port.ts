@@ -2,8 +2,9 @@
  * The publisher port.
  *
  * M4 needed the queue to be real before there was anything to publish to, so the tick takes a
- * publisher as a dependency and the tests inject a double. M5 fills in the four adapters behind this
- * same interface — including the one that refuses, because TikTok ships as a manual pack.
+ * publisher as a dependency and the tests inject a double. M5 filled in the adapters behind this same
+ * interface — Instagram, Threads, YouTube — including the one that refuses, because TikTok ships as a
+ * manual pack.
  *
  * Three methods, and the shape of each is a rule from the spec rather than a convenience:
  *
@@ -28,21 +29,27 @@ export interface PublishMedia {
   key: string;
   url: string;
   kind: "image" | "video";
+  /**
+   * The file's own dimensions, from the media row. Only classification reads them (YouTube decides
+   * Short vs long-form from the file, not from a field the operator sets), never a URL builder.
+   */
+  width: number | null;
+  height: number | null;
 }
 
 export interface PublishInput {
   variantId: string;
   platform: Platform;
   channelId: string;
-  /** The platform's own account id — what X signs for and what the confirmation compares against. */
+  /** The platform's own account id — what the confirmation compares against, never the handle. */
   accountRef: string;
+  /**
+   * The post's title. YouTube's `snippet.title` is the only place a title reaches a platform
+   * (design decision 6: variants carry no title field); the other adapters ignore it.
+   */
+  title: string;
   caption: string;
   hashtags: string[];
-  /**
-   * Media in publish order, resolved by `src/db/media.ts` (carousel sequence matters). An adapter
-   * never builds a URL: Meta fetches the bytes itself, so a guessed path is a post that fails
-   * somewhere the operator cannot see.
-   */
   media: PublishMedia[];
   /**
    * Decrypted credentials, in process only. Handed in rather than fetched by the adapter so
@@ -83,13 +90,32 @@ export type PublishResult =
 export interface Preview {
   /** In order: exactly the calls a real publish would make. */
   calls: HttpCall[];
-  /** Null when the platform does not charge per post (Instagram and Threads are free). */
+  /** Null when the platform does not charge per post (nothing does today). */
   estimatedCostUsd: number | null;
   /**
-   * What the operator should know before sending — platform ceilings an adapter can surface but not
-   * enforce. Empty when there is nothing to say.
+   * What the operator should know before sending — platform ceilings and costs an adapter can surface
+   * but not enforce. YouTube's quota line lives here (design decision 5); empty when there is nothing
+   * to say.
    */
   notes: string[];
+}
+
+/**
+ * What a publish spends from a quota-metered platform, in that platform's own units.
+ *
+ * The scarce-resource principle (non-negotiable 6) with a new currency: YouTube's Data API meters
+ * uploads and reads per day, not money. Shown in the preview and stored with the result under `quota`
+ * in `publish_results.raw` — shown, not enforced (no per-workspace counter in v1).
+ */
+export interface QuotaEstimate {
+  /** Uploads this publish initiates, against the daily allocation for them. */
+  uploadSlots: number;
+  dailyUploadSlots: number;
+  /** Read-back calls, against the general bucket. */
+  readUnits: number;
+  dailyReadUnits: number;
+  /** When the allocation resets, in the platform's words. */
+  resetsAt: string;
 }
 
 export interface Publisher {
@@ -107,11 +133,12 @@ export interface Publisher {
   /**
    * What sending this variant costs, from its shape alone — the same number `preview()` shows.
    *
-   * Optional because only a metered platform has an answer: Instagram and Threads are free. The
-   * queue records it with the result, so the estimate the operator saw is the one that was spent
-   * (spec: publishers §"X's cost is disclosed before it is incurred").
+   * Optional because only a metered platform has an answer, and none of them charges money any more.
+   * The queue records it with the result, so the estimate the operator saw is the one that was spent.
    */
   estimateCostUsd?(input: PublishInput): number | null;
+  /** The quota estimate for a platform that meters uploads rather than money (YouTube). */
+  estimateQuota?(input: PublishInput): QuotaEstimate | null;
 }
 
 /**
@@ -123,16 +150,16 @@ export interface Publisher {
 export const DRY_RUN: PublishResult = { status: "uncertain", detail: "a dry run sends nothing" };
 
 /**
- * HTTP 402 from a metered platform: the account is out of prepaid credits.
+ * Google's code for "this project has spent the day's YouTube Data API quota".
  *
- * It is a spending problem, not a transient one — retrying with no credits buys nothing, and a
- * backoff that treats it as weather would retry three times before saying so
- * (`docs/003-ITA.md` §7: "402 → top up credits, not retryable").
+ * It is a terminal answer, not weather: every retry is another `videos.insert` or `videos.list` call
+ * against a bucket that refills at midnight Pacific Time, so the queue records it and stops
+ * (`publish.quota_blocked`). The same reasoning X's 402 earned before it left the lineup.
  */
-export const PAYMENT_REQUIRED_CODE = "402";
+export const QUOTA_EXCEEDED_CODE = "quotaExceeded";
 
-export function isCostProblem(result: { platformError?: PlatformError }): boolean {
-  return result.platformError?.code === PAYMENT_REQUIRED_CODE;
+export function isQuotaProblem(result: { platformError?: PlatformError }): boolean {
+  return result.platformError?.code === QUOTA_EXCEEDED_CODE;
 }
 
 /**

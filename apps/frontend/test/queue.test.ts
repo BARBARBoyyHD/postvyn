@@ -38,7 +38,7 @@ const ctx = { workspaceId: WS, userId: USER, role: "owner" as const };
 
 function stub(outcome: PublishResult | ((input: PublishInput) => PublishResult)): Publisher {
   return {
-    platform: "x",
+    platform: "threads",
     async preview() {
       return { calls: [], estimatedCostUsd: null, notes: [] };
     },
@@ -64,7 +64,7 @@ async function seed() {
     .bind(BRAND, WS, now, now)
     .run();
   await env.DB.prepare(
-    "insert or ignore into channels (id, brand_id, platform, account_ref, status, created_at, updated_at) values (?, ?, 'x', 'm4', 'active', ?, ?)",
+    "insert or ignore into channels (id, brand_id, platform, account_ref, status, created_at, updated_at) values (?, ?, 'threads', 'm4', 'active', ?, ?)",
   )
     .bind(CHANNEL, BRAND, now, now)
     .run();
@@ -83,7 +83,7 @@ async function seed() {
   // needs real credentials — encrypted with a fixed test key, never a real one.
   await credentialStore(testEnv).connect(ctx, {
     brandId: BRAND,
-    platform: "x",
+    platform: "threads",
     accountRef: "m4",
     credentials: { accessToken: "m4-test-token" },
   });
@@ -441,7 +441,7 @@ describe("one success per variant, even under a retry bug", () => {
   it("the database refuses a second success whatever the code believes", async () => {
     const insert = (id: string) =>
       env.DB.prepare(
-        "insert into publish_results (id, variant_id, platform, state, url) values (?, ?, 'x', 'succeeded', 'https://x.test/1')",
+        "insert into publish_results (id, variant_id, platform, state, url) values (?, ?, 'threads', 'succeeded', 'https://x.test/1')",
       )
         .bind(id, VARIANT)
         .run();

@@ -77,7 +77,7 @@ describe("variant_overrides", () => {
       .bind(BRAND, WS, now, now)
       .run();
     await env.DB.prepare(
-      "insert or ignore into channels (id, brand_id, platform, account_ref, status, created_at, updated_at) values (?, ?, 'x', 'append', 'active', ?, ?)",
+      "insert or ignore into channels (id, brand_id, platform, account_ref, status, created_at, updated_at) values (?, ?, 'threads', 'append', 'active', ?, ?)",
     )
       .bind(CHANNEL, BRAND, now, now)
       .run();

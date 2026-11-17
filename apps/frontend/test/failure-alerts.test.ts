@@ -37,7 +37,7 @@ const PLATFORM_ERROR = { code: "x_500", message: "Internal error" };
 
 function stub(outcome: ReturnType<typeof failure> | ReturnType<typeof ambiguous>): Publisher {
   return {
-    platform: "x",
+    platform: "threads",
     async preview() {
       return { calls: [], estimatedCostUsd: null, notes: [] };
     },
@@ -85,7 +85,7 @@ async function seed(options: { withOwner?: boolean } = {}) {
   // failure this file is about has to happen *after* a real credential read.
   const connected = await credentialStore(testEnv).connect(
     { workspaceId: WS, userId: OWNER, role: "owner" },
-    { brandId: BRAND, platform: "x", accountRef: ACCOUNT, label: "the x account", credentials: { accessToken: "test" } },
+    { brandId: BRAND, platform: "threads", accountRef: ACCOUNT, label: "the x account", credentials: { accessToken: "test" } },
   );
   if (!connected.ok) throw new Error("seed: connect failed");
 
@@ -146,7 +146,7 @@ describe("a failed scheduled publish tells the operator, once", () => {
     if (first.kind !== "publish-failure") return;
 
     expect(first.to).toBe(OWNER_EMAIL);
-    expect(first.platform).toBe("x");
+    expect(first.platform).toBe("threads");
     expect(first.account).toBe(ACCOUNT);
     expect(first.postTitle).toBe("About Zavron");
     expect(first.postUrl).toBe(`https://postvyn.test/posts/${POST}`);
@@ -159,16 +159,16 @@ describe("a failed scheduled publish tells the operator, once", () => {
     expect(text).toContain("What to do:");
   });
 
-  it("treats running out of credits as money: one email, no retries, and the cost named", async () => {
+  it("treats an exhausted quota as terminal: one email, no retries, and the reset named", async () => {
     const mail = new MemoryMailer();
-    const costBlocked: Publisher = {
+    const quotaBlocked: Publisher = {
       ...stub(failure()),
       async publish() {
-        return { status: "failed", platformError: { code: "402", message: "Payment Required" } };
+        return { status: "failed", platformError: { code: "quotaExceeded", message: "Quota exceeded" } };
       },
     };
 
-    await runTick(testEnv, { publisher: costBlocked, mailer: mail, maxJobs: 1 });
+    await runTick(testEnv, { publisher: quotaBlocked, mailer: mail, maxJobs: 1 });
 
     const job = await env.DB.prepare("select state, attempts, last_error from jobs").first<{
       state: string;
@@ -177,13 +177,13 @@ describe("a failed scheduled publish tells the operator, once", () => {
     }>();
     expect(job?.state).toBe("dead");
     expect(job?.attempts).toBe(1);
-    expect(job?.last_error).toContain("cost_blocked");
+    expect(job?.last_error).toContain("quota_blocked");
 
     expect(mail.sent).toHaveLength(1);
     const sent = mail.sent[0];
     if (sent.kind !== "publish-failure") throw new Error("expected a publish failure mail");
-    expect(sent.error).toEqual({ code: "402", message: "Payment Required" });
-    expect(sent.action).toContain("credits");
+    expect(sent.error).toEqual({ code: "quotaExceeded", message: "Quota exceeded" });
+    expect(sent.action).toContain("quota");
   });
 
   it("does not email an uncertain result: it needs a human, not an inbox rule", async () => {
@@ -201,7 +201,7 @@ describe("who is told", () => {
 
     const outcome = await sendPublishFailureEmail(
       testEnv,
-      { variantId: VARIANT, outcome: { variantId: VARIANT, platform: "x", verdict: "failed", platformError: PLATFORM_ERROR } },
+      { variantId: VARIANT, outcome: { variantId: VARIANT, platform: "threads", verdict: "failed", platformError: PLATFORM_ERROR } },
       mail,
     );
 
@@ -211,7 +211,7 @@ describe("who is told", () => {
 });
 
 describe("the suggested action", () => {
-  const base = { variantId: VARIANT, platform: "x" as const };
+  const base = { variantId: VARIANT, platform: "threads" as const };
 
   it("maps each terminal verdict to the one thing that unblocks it", () => {
     expect(suggestedAction({ ...base, verdict: "reauth_required" })).toContain("Reconnect");
@@ -221,9 +221,9 @@ describe("the suggested action", () => {
       suggestedAction({
         ...base,
         verdict: "failed",
-        platformError: { code: "402", message: "Payment Required" },
+        platformError: { code: "quotaExceeded", message: "Quota exceeded" },
       }),
-    ).toContain("credits");
+    ).toContain("quota");
   });
 
   it("is one sentence, not a list of options", () => {

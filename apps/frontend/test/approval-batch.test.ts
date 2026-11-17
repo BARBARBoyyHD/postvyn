@@ -28,7 +28,7 @@ const STALE = "var-batch-stale";
 const BLOCKED = "var-batch-blocked";
 const FOREIGN = "var-batch-foreign";
 
-const BLOCKED_CAPTION = "x".repeat(300); // x accepts 280, so this is a hard error, not a warning
+const BLOCKED_CAPTION = "x".repeat(600); // threads accepts 500 including hashtags: a hard error
 
 async function seedVariant(workspaceId: string, variantId: string, caption: string) {
   const now = Date.now();
@@ -44,7 +44,7 @@ async function seedVariant(workspaceId: string, variantId: string, caption: stri
       variantId,
     ),
     env.DB.prepare(
-      "insert or ignore into channels (id, brand_id, platform, account_ref, status) values (?, ?, 'x', ?, 'active')",
+      "insert or ignore into channels (id, brand_id, platform, account_ref, status) values (?, ?, 'threads', ?, 'active')",
     ).bind(channelId, brandId, variantId),
     env.DB.prepare(
       "insert or ignore into posts (id, workspace_id, brand_id, title, format, status, created_at, updated_at) values (?, ?, ?, 'Batch', 'text', 'review', ?, ?)",
@@ -127,7 +127,7 @@ describe("bulk approve", () => {
     expect(blockedItem?.ok).toBe(false);
     if (blockedItem && !blockedItem.ok && blockedItem.error === "spec_blocked") {
       expect(blockedItem.violations[0]?.field).toBe("caption");
-      expect(blockedItem.violations[0]?.message).toContain("280");
+      expect(blockedItem.violations[0]?.message).toContain("500");
     } else {
       throw new Error(`expected spec_blocked, got ${JSON.stringify(blockedItem)}`);
     }

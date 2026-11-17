@@ -46,6 +46,7 @@ function input(overrides: Partial<PublishInput> = {}): PublishInput {
     platform: "threads",
     channelId: "chn-threads",
     accountRef: ACCOUNT_REF,
+    title: "",
     caption: "A caption",
     hashtags: ["#one"],
     media: [],

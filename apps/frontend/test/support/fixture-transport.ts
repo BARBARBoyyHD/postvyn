@@ -12,12 +12,18 @@ import type { HttpCall, Transport } from "@/publishers/transport";
 export interface FixtureReply {
   status: number;
   body: unknown;
+  /**
+   * Headers the adapter reads, lower-cased as `liveTransport` delivers them: `location` carries a
+   * resumable upload's session URL, `range` says how many bytes a 308 has, `content-length` sizes the
+   * media a HEAD probes.
+   */
+  headers?: Record<string, string | undefined>;
 }
 
 /**
  * Bytes an adapter fetched itself. A download is either literally recorded (`bytes`, as text so a
- * fixture stays reviewable in a diff) or described by its size alone (`sizeBytes`) when only the chunk
- * mechanics depend on it — a fixture does not need to carry 11 MB of video to prove three segments.
+ * fixture stays reviewable in a diff) or described by the file's total size alone (`sizeBytes`), sliced
+ * per request — a fixture does not need to carry 11 MB of video to prove three segments.
  */
 export type FixtureDownload =
   | { status: number; bytes: string }
@@ -46,9 +52,14 @@ export function fixtureTransport(fixture: RecordedReply): {
         const reply = fixture.replies[index] ?? fixture.replies[fixture.replies.length - 1];
         index += 1;
         if (!reply) return { kind: "dry_run" };
-        return { kind: "response", status: reply.status, body: JSON.stringify(reply.body) };
+        return {
+          kind: "response",
+          status: reply.status,
+          body: JSON.stringify(reply.body),
+          ...(reply.headers ? { headers: defined(reply.headers) } : {}),
+        };
       },
-      async download(url) {
+      async download(url, range) {
         calls.push({ method: "GET", url });
         const download =
           fixture.downloads?.[downloadIndex] ?? fixture.downloads?.[fixture.downloads.length - 1];
@@ -56,10 +67,26 @@ export function fixtureTransport(fixture: RecordedReply): {
         if (!download) return { kind: "dry_run" };
         const bytes =
           "sizeBytes" in download
-            ? new Uint8Array(download.sizeBytes)
+            ? // A ranged request gets the slice it asked for, so a chunked upload's offsets advance the
+              // way they would against R2 — the bytes themselves are zeroes, only their count matters.
+              new Uint8Array(
+                range
+                  ? Math.max(0, Math.min(range.length, download.sizeBytes - range.offset))
+                  : download.sizeBytes,
+              )
             : new TextEncoder().encode(download.bytes);
         return { kind: "bytes", status: download.status, bytes };
       },
     },
   };
+}
+
+/**
+ * A JSON fixture gives every key an optional `| undefined` when its replies disagree about which
+ * headers they carry, so the undefined ones are dropped before they reach a `Record<string, string>`.
+ */
+function defined(headers: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
 }

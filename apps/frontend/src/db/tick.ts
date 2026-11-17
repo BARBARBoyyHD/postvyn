@@ -34,12 +34,13 @@ import { probeMedia } from "@/publishers/media-probe";
 import { publisherFor } from "@/publishers/registry";
 import { liveTransport, type Transport } from "@/publishers/transport";
 import {
-  isCostProblem,
+  isQuotaProblem,
   type PlatformError,
   type Publisher,
   type Preview,
   type PublishInput,
   type PublishResult,
+  type QuotaEstimate,
 } from "@/publishers/port";
 import { systemContext } from "@/lib/context";
 import type { Mailer } from "@/lib/email";
@@ -66,8 +67,10 @@ export interface VariantOutcome {
   resumeAfterMs?: number;
   /** Only for `awaiting_platform`: the container the next tick polls instead of creating another. */
   containerId?: string;
-  /** What the send was estimated to cost; null for a platform that does not meter (free ones). */
+  /** What the send was estimated to cost; null for a platform that does not meter money (all of them). */
   estimatedCostUsd?: number | null;
+  /** What a quota-metered send spends, in the platform's units (YouTube: slots and read units). */
+  quota?: QuotaEstimate | null;
 }
 
 /**
@@ -199,6 +202,9 @@ async function channelAccess(
       platform: channel.platform,
       channelId: channel.id,
       accountRef: channel.accountRef,
+      // The post carries the title; YouTube's `snippet.title` is the only platform that reads it
+      // (design decision 6 — variants have no title field, and v1 does not add one).
+      title: post.title,
       caption: variant.caption ?? "",
       hashtags: parseList(variant.hashtags),
       media: resolution.media,
@@ -280,8 +286,9 @@ export async function publishVariant(
     );
   }
 
-  const publisher = options.publisher ?? publisherFor(channel.platform, creditsFor(env));
+  const publisher = options.publisher ?? publisherFor(channel.platform);
   const estimateCostUsd = publisher.estimateCostUsd?.(access.input) ?? null;
+  const quota = publisher.estimateQuota?.(access.input) ?? null;
   const result = await send(publisher, access.input, options.resume);
 
   switch (result.status) {
@@ -294,7 +301,7 @@ export async function publishVariant(
           platform: channel.platform,
           platformPostId: result.platformPostId,
           url: result.permalink,
-          raw: result.raw === undefined ? null : JSON.stringify(result.raw).slice(0, 4000),
+          raw: rawFor(quota, result.raw),
           state: "succeeded",
           estimatedCostUsd: estimateCostUsd,
           createdAt: now,
@@ -319,6 +326,7 @@ export async function publishVariant(
         verdict: "published",
         url: result.permalink,
         estimatedCostUsd: estimateCostUsd,
+        quota,
       };
     }
 
@@ -331,7 +339,7 @@ export async function publishVariant(
           platform: channel.platform,
           platformPostId: null,
           url: null,
-          raw: JSON.stringify(result.platformError ?? { detail: result.detail }).slice(0, 2000),
+          raw: rawFor(quota, result.platformError ?? { detail: result.detail }),
           state: "uncertain",
           estimatedCostUsd: estimateCostUsd,
           createdAt: now,
@@ -345,6 +353,7 @@ export async function publishVariant(
         detail: result.detail,
         platformError: result.platformError,
         estimatedCostUsd: estimateCostUsd,
+        quota,
       };
     }
 
@@ -359,27 +368,28 @@ export async function publishVariant(
           url: null,
           // Stored exactly as the platform said it: the operator reads the platform's words, and a
           // later investigation can match them against the platform's own logs.
-          raw: JSON.stringify(result.platformError).slice(0, 2000),
+          raw: rawFor(quota, result.platformError),
           state: "failed",
           estimatedCostUsd: estimateCostUsd,
           createdAt: now,
         })
         .onConflictDoNothing();
 
-      // Out of credits is a spending problem, not a failed post: it gets its own audit line so the
-      // board and the alert read "top up X" rather than "publish failed at 07:00".
-      if (isCostProblem(result)) {
+      // An exhausted quota is a spending problem in a new currency: every retry is another call against
+      // a bucket that refills at midnight Pacific, so the job stops and the board reads "quota", not
+      // "publish failed at 07:00" (non-negotiable 6, design decision 5).
+      if (isQuotaProblem(result)) {
         await db.insert(s.activityLog).values({
           id: `act_${crypto.randomUUID().slice(0, 8)}`,
           workspaceId: post.workspaceId,
           postId: post.id,
           actorId: null,
-          action: "publish.cost_blocked",
+          action: "publish.quota_blocked",
           detail: JSON.stringify({
             variantId,
             platform: channel.platform,
             platformError: result.platformError,
-            estimatedCostUsd: estimateCostUsd,
+            quota,
           }),
           createdAt: now,
         });
@@ -392,6 +402,7 @@ export async function publishVariant(
         detail: result.platformError.message,
         platformError: result.platformError,
         estimatedCostUsd: estimateCostUsd,
+        quota,
       };
     }
 
@@ -439,6 +450,7 @@ export async function publishVariant(
         detail: result.platformError.message,
         platformError: result.platformError,
         estimatedCostUsd: estimateCostUsd,
+        quota,
       };
     }
 
@@ -448,13 +460,15 @@ export async function publishVariant(
 }
 
 /**
- * Whether a metered platform has been funded — the one thing an adapter cannot know.
+ * The platform's own answer, with ours beside it.
  *
- * Read here because this is where the environment lives; passed down because `src/publishers` holds
- * no env and no database (`AGENTS.md`, layering).
+ * A quota-metered publish stores what it spent under `quota`, next to the platform's response — the
+ * estimate the operator saw and the outcome land in one row. `estimated_cost_usd` stays dollars: no
+ * supported platform charges money today, but the column is generic and past rows keep their estimates.
  */
-function creditsFor(env: WorkerEnv): { creditsConfigured: boolean } {
-  return { creditsConfigured: env.X_CREDITS_CONFIGURED === "true" };
+function rawFor(quota: QuotaEstimate | null, payload: unknown): string | null {
+  if (payload === undefined && quota === null) return null;
+  return JSON.stringify(quota ? { quota, platform: payload ?? null } : payload).slice(0, 4000);
 }
 
 /**
@@ -539,7 +553,16 @@ export async function previewVariant(
   const target = await loadPublishTarget(env, variantId);
   if (!target.ok) return { ok: false, variantId, reason: "not_found", detail: target.reason };
 
-  const publisher = options.publisher ?? publisherFor(target.channel.platform, creditsFor(env));
+  // Access before the adapter: a legacy `x` channel is disabled and has no adapter at all, and a
+  // preview of one must say "not connected", not throw from the registry.
+  const access = await channelAccess(env, target);
+  if (!access.ok) {
+    return access.verdict === "spec_blocked"
+      ? { ok: false, variantId, reason: "spec_blocked", detail: access.detail, violations: access.violations }
+      : { ok: false, variantId, reason: "not_connected", detail: access.detail };
+  }
+
+  const publisher = options.publisher ?? publisherFor(target.channel.platform);
 
   // An empty call list would read as "nothing would be sent to this platform", which is not the same
   // statement as "there is no adapter for it yet". Say the true one.
@@ -550,13 +573,6 @@ export async function previewVariant(
       reason: "not_connected",
       detail: "no platform adapter is configured yet (M5)",
     };
-  }
-
-  const access = await channelAccess(env, target);
-  if (!access.ok) {
-    return access.verdict === "spec_blocked"
-      ? { ok: false, variantId, reason: "spec_blocked", detail: access.detail, violations: access.violations }
-      : { ok: false, variantId, reason: "not_connected", detail: access.detail };
   }
 
   return { ok: true, variantId, preview: await publisher.preview(access.input) };
@@ -710,11 +726,11 @@ export async function runTick(env: WorkerEnv, options: TickOptions): Promise<Tic
         const error = outcome.platformError;
         const reason = error ? `${error.code}: ${error.message}` : (outcome.detail ?? "publish failed");
 
-        // Out of credits is money, not weather: retrying spends nothing and fixes nothing, so the
-        // job stops here instead of burning the backoff that a transient failure gets
-        // (docs/003-ITA.md §7: "402 → top up credits, not retryable").
-        if (isCostProblem(outcome)) {
-          await store.dead(job.id, `cost_blocked: ${reason}`);
+        // An exhausted quota is not weather: retrying spends another call against a bucket that refills
+        // at midnight Pacific, so the job stops here instead of burning the backoff a transient failure
+        // gets (design decision 5: YouTube's 403 quotaExceeded is terminal).
+        if (isQuotaProblem(outcome)) {
+          await store.dead(job.id, `quota_blocked: ${reason}`);
           await tellOperator();
           break;
         }

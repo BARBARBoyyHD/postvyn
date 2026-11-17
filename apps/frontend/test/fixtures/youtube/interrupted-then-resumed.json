@@ -1,0 +1,69 @@
+{
+  "replies": [
+    {
+      "status": 200,
+      "body": {
+        "access_token": "ya29.a0Af-test-access-token",
+        "expires_in": 3599,
+        "token_type": "Bearer"
+      }
+    },
+    {
+      "status": 200,
+      "body": "",
+      "headers": { "content-length": "20971520", "content-type": "video/mp4" }
+    },
+    {
+      "status": 200,
+      "body": "",
+      "headers": {
+        "location": "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=test-session-interrupted"
+      }
+    },
+    {
+      "status": 308,
+      "body": "",
+      "headers": { "range": "bytes=0-8388607" }
+    },
+    {
+      "status": 503,
+      "body": { "error": { "code": 503, "message": "Backend Error", "errors": [{ "reason": "backendError" }] } }
+    },
+    {
+      "status": 200,
+      "body": {
+        "access_token": "ya29.a0Af-test-access-token",
+        "expires_in": 3599,
+        "token_type": "Bearer"
+      }
+    },
+    {
+      "status": 200,
+      "body": "",
+      "headers": { "content-length": "20971520", "content-type": "video/mp4" }
+    },
+    {
+      "status": 308,
+      "body": "",
+      "headers": { "range": "bytes=0-16777215" }
+    },
+    {
+      "status": 200,
+      "body": { "kind": "youtube#video", "id": "ResumedId0001" }
+    },
+    {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "kind": "youtube#video",
+            "id": "ResumedId0001",
+            "snippet": { "title": "A horizontal demo clip" },
+            "status": { "uploadStatus": "processed", "privacyStatus": "public" }
+          }
+        ]
+      }
+    }
+  ],
+  "downloads": [{ "status": 206, "sizeBytes": 20971520 }]
+}

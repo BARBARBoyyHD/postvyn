@@ -32,8 +32,8 @@ const BLOCKED_AT_APPROVE = "var-gate-approve";
 const BLOCKED_AT_PUBLISH = "var-gate-publish";
 const WARNED = "var-gate-warn";
 
-/** X accepts 280 characters; 300 is a hard error under any reading of the rules. */
-const BLOCKED_CAPTION = "x".repeat(300);
+/** Threads accepts 500 characters, hashtags included; 600 is a hard error under any reading of the rules. */
+const BLOCKED_CAPTION = "x".repeat(600);
 
 async function seedVariant(variantId: string, caption: string, hashtags: string) {
   const now = Date.now();
@@ -49,7 +49,7 @@ async function seedVariant(variantId: string, caption: string, hashtags: string)
       variantId,
     ),
     env.DB.prepare(
-      "insert or ignore into channels (id, brand_id, platform, account_ref, status) values (?, ?, 'x', ?, 'active')",
+      "insert or ignore into channels (id, brand_id, platform, account_ref, status) values (?, ?, 'threads', ?, 'active')",
     ).bind(channelId, brandId, variantId),
     env.DB.prepare(
       "insert or ignore into posts (id, workspace_id, brand_id, title, format, status, created_at, updated_at) values (?, ?, ?, 'Gate', 'text', 'review', ?, ?)",
@@ -62,7 +62,7 @@ async function seedVariant(variantId: string, caption: string, hashtags: string)
   // A publish now refuses a channel without readable credentials (M5), so the gate's fixtures connect.
   const connected = await credentialStore(testEnv).connect(ctx, {
     brandId,
-    platform: "x",
+    platform: "threads",
     accountRef: variantId,
     credentials: { accessToken: "gate-token" },
   });
@@ -95,7 +95,7 @@ function countingPublisher(): { publisher: Publisher; calls: () => number } {
   return {
     calls: () => calls,
     publisher: {
-      platform: "x",
+      platform: "threads",
       async preview() {
         return { calls: [], estimatedCostUsd: null, notes: [] };
       },
@@ -124,7 +124,7 @@ describe("the spec gate blocks", () => {
     }
     expect(result.violations[0]?.field).toBe("caption");
     expect(result.violations[0]?.level).toBe("blocked");
-    expect(result.violations[0]?.message).toContain("280");
+    expect(result.violations[0]?.message).toContain("500");
 
     // nothing was granted, scheduled or queued on the way to the refusal
     const approvalRows = await env.DB.prepare("select count(*) as n from approvals").first<{ n: number }>();
@@ -166,7 +166,7 @@ describe("the spec gate blocks", () => {
       last_error: string;
     }>();
     expect(job?.state).toBe("dead");
-    expect(job?.last_error).toContain("280");
+    expect(job?.last_error).toContain("500");
 
     const post = await env.DB.prepare("select status from posts where id = ?")
       .bind(`post-${BLOCKED_AT_PUBLISH}`)

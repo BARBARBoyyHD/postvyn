@@ -16,12 +16,12 @@ tags: [postvyn, home]
 
 | | |
 |---|---|
-| **Milestone** | `M5 — Shipping` **30/31** applied (code tasks done; close-out 8.2 waits on the first live X post) · `M6 — Cutover` **24/27** (upload/serving/hygiene, runbook, `tools/publish` frozen, lessons vaulted, m2–m4 archived; 5.1/5.4/5.5 blocked on live posts) · `M4` **32/32** archived → [[004-PEP#3. Milestones & Phases\|PEP §3]] |
-| **Stories** | 73 tracked (58 user + 15 platform) · 49 Must · **27 ☑ · 28 ◐** → [[006-USER-STORIES]] |
-| **Next action** | make the first live publish per platform — M5's exit criterion, and what unblocks recording real X costs — then the M6 cutover week (5.1–5.5) and 5.5's keep-or-delete call on `tools/publish` |
+| **Milestone** | `M5 — Shipping` **30/31** applied (code tasks done; close-out 8.2 descoped 2026-11-17 — X left the lineup, so there is no first live X post) · `M6 — Cutover` **24/27** (upload/serving/hygiene, runbook, `tools/publish` frozen, lessons vaulted, m2–m4 archived; 5.1/5.4/5.5 blocked on live posts) · `M4` **32/32** archived → [[004-PEP#3. Milestones & Phases\|PEP §3]] |
+| **Stories** | 78 tracked (63 user + 15 platform) · 54 Must · **26 ☑ · 28 ◐ · 1 ✕ (US-038, X removed) · 23 ☐** → [[006-USER-STORIES]] |
+| **Next action** | implement `platform-swap-youtube` — X is out, YouTube (VOD + Shorts) is in (decision 2026-11-17); then the first live publishes per platform and the M6 cutover week (5.1–5.5) and 5.5's keep-or-delete call on `tools/publish` |
 | **Blocked on** | a real week of live posts before M6 5.1/5.4/5.5 can move · `wrangler login` before any deploy, remote migration or an unattended cron (US-029) · first GitHub push (m0 6.5) · domain decision (OI-5) · Resend + Meta credentials → [[005-REQUIREMENTS]]. The only open code tasks are three m1 partials: 3.2 Turnstile production assertion, 6.4 per-role endpoint tests, 7.1 reset/revoke-all audit |
-| **Open change** | `m0` **40/42** · `m1` **29/35** · `m5` **30/31** · `m6` **24/27** |
-| **Specified, not started** | `m6-media-and-cutover` — code is in and the runbook exists; what is left is the cutover week. `m2`/`m3`/`m4` archived 2026-11-17; `m5` stays open until its first live X post (8.2) |
+| **Open change** | `platform-swap-youtube` **0/28** (new 2026-11-17, the lineup swap — implement next) · `m0` **40/42** · `m1` **29/35** · `m5` **30/31** · `m6` **24/27** |
+| **Specified, not started** | `platform-swap-youtube` — X out, YouTube (VOD + Shorts) in: spec deltas, tasks and the doc amendments are written; specialists implement next. `m6-media-and-cutover` — code is in and the runbook exists; what is left is the cutover week. `m2`/`m3`/`m4` archived 2026-11-17; `m5` stays open but is otherwise complete (8.2 descoped with X) |
 | **Applied since** | `m2-vault-import-and-board` **42/42**, `m3-authoring` **30/30**, `m4-approval-and-jobs` **32/32** — archived 2026-11-17 (importer + board, composer + spec engine, approvals + cron + kill switch) · `m5-publishing` **30/31** (channels, IG/Threads/X adapters, TikTok pack, failure email) · `m6` **24/27** (R2 uploads, serving, purge, [[runbook]], lessons vaulted) |
 
 ## Specs
@@ -54,9 +54,10 @@ Three rules that keep coming up because they are the product:
 | # | Question | Where |
 |---|---|---|
 | OI-5 | which domain carries the app (`zavron.dev` subdomain?) | [[005-REQUIREMENTS#12. Open items]] |
-| D1 | X automated or manual? | [[005-REQUIREMENTS#6. Decisions needed before M0]] |
 | OQ-1 | SaaS path: shared audited Meta app vs bring-your-own | [[001-PRD#14. Open Questions]] |
-| OQ-3 | keep X at $0.20/link-post, or demote to manual like TikTok | [[001-PRD#14. Open Questions]] |
+
+*D1 (X automated or manual?) and OQ-3 (keep X?) closed 2026-11-17 — X was removed from the product
+and YouTube (VOD + Shorts) added; resolutions are recorded in [[005-REQUIREMENTS#6. Decisions needed before M0]] and [[001-PRD#14. Open Questions]].*
 
 ## Journal
 

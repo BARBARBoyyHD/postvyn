@@ -26,7 +26,7 @@ const COLUMNS = [
   { status: "archived", label: "Archived" },
 ] as const;
 
-const PLATFORMS = ["instagram", "tiktok", "x", "threads"] as const;
+const PLATFORMS = ["instagram", "tiktok", "youtube", "threads"] as const;
 
 export default async function BoardPage({
   searchParams,

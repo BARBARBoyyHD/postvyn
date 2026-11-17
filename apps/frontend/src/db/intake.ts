@@ -110,6 +110,7 @@ export function intake(env: Bindings) {
         const attached = target.mediaIds.map((id) => byId.get(id)).filter(Boolean);
 
         const verdict = validate(channel.platform, {
+          title: payload.title,
           caption: target.caption,
           hashtags: target.hashtags,
           media: attached.map((row) => ({

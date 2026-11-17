@@ -1,0 +1,48 @@
+{
+  "replies": [
+    {
+      "status": 200,
+      "body": {
+        "access_token": "ya29.a0Af-test-access-token",
+        "expires_in": 3599,
+        "scope": "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly",
+        "token_type": "Bearer"
+      }
+    },
+    {
+      "status": 200,
+      "body": "",
+      "headers": { "content-length": "1048576", "content-type": "video/mp4" }
+    },
+    {
+      "status": 200,
+      "body": "",
+      "headers": {
+        "location": "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=test-session-vod"
+      }
+    },
+    {
+      "status": 201,
+      "body": {
+        "kind": "youtube#video",
+        "id": "dQw4w9WgXcZ",
+        "snippet": { "title": "A horizontal demo clip" },
+        "status": { "uploadStatus": "uploaded", "privacyStatus": "public" }
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "kind": "youtube#video",
+            "id": "dQw4w9WgXcZ",
+            "snippet": { "title": "A horizontal demo clip" },
+            "status": { "uploadStatus": "processed", "privacyStatus": "public" }
+          }
+        ]
+      }
+    }
+  ],
+  "downloads": [{ "status": 206, "sizeBytes": 1048576 }]
+}

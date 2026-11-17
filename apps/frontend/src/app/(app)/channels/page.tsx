@@ -5,8 +5,9 @@
  * token rejected by the platform reads "reconnect required", not a blank row. Connecting is
  * owner-only (`channel.connect`); the form is not drawn for anyone else.
  *
- * X is the platform this milestone connects by hand. Instagram and Threads credentials are minted
- * elsewhere (OAuth), and TikTok has no credential here by design.
+ * YouTube is the platform this screen connects by hand: its three OAuth2 values are created in the
+ * Google Cloud console and pasted in (no in-app Google redirect — design decision 1). Instagram and
+ * Threads credentials are minted elsewhere (OAuth), and TikTok has no credential here by design.
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";

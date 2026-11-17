@@ -1,0 +1,42 @@
+{
+  "replies": [
+    {
+      "status": 200,
+      "body": {
+        "access_token": "ya29.a0Af-test-access-token",
+        "expires_in": 3599,
+        "token_type": "Bearer"
+      }
+    },
+    {
+      "status": 200,
+      "body": "",
+      "headers": { "content-length": "1048576", "content-type": "video/mp4" }
+    },
+    {
+      "status": 200,
+      "body": "",
+      "headers": {
+        "location": "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=test-session-mismatch"
+      }
+    },
+    {
+      "status": 200,
+      "body": { "kind": "youtube#video", "id": "MismatchId01" }
+    },
+    {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "kind": "youtube#video",
+            "id": "MismatchId01",
+            "snippet": { "title": "A title somebody edited afterwards" },
+            "status": { "uploadStatus": "processed", "privacyStatus": "unlisted" }
+          }
+        ]
+      }
+    }
+  ],
+  "downloads": [{ "status": 206, "sizeBytes": 1048576 }]
+}

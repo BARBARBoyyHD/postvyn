@@ -27,7 +27,7 @@ function stubPublisher(): { publisher: Publisher; calls: () => number } {
   return {
     calls: () => calls,
     publisher: {
-      platform: "x",
+      platform: "threads",
       async preview() {
         return { calls: [], estimatedCostUsd: null, notes: [] };
       },

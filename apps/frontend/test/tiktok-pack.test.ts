@@ -309,6 +309,7 @@ describe("the guideline reason travels with the target", () => {
       platform: "tiktok",
       channelId: CH_TIKTOK,
       accountRef: "tt-1",
+      title: "",
       caption: CAPTION,
       hashtags: HASHTAGS,
       media: [],

@@ -134,13 +134,13 @@ describe("connecting an account", () => {
     const store = credentialStore(envV1);
     const first = await store.connect(ctxA, {
       brandId: BRAND_A,
-      platform: "x",
+      platform: "threads",
       accountRef: "x-1",
       credentials: { accessToken: "old" },
     });
     const second = await store.connect(ctxA, {
       brandId: BRAND_A,
-      platform: "x",
+      platform: "threads",
       accountRef: "x-1",
       credentials: { accessToken: "new" },
     });

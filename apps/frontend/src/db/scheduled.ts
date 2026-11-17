@@ -8,7 +8,7 @@
  * workspace, which is why it takes no `WorkspaceContext`: it chooses no tenant, it walks them.
  */
 import { runTick, type TickReport } from "./tick";
-import { refreshInstagramTokens, type TokenRefreshReport } from "./token-refresh";
+import { refreshTokens, type TokenRefreshReport } from "./token-refresh";
 import type { Publisher } from "@/publishers/port";
 import { liveTransport, type Transport } from "@/publishers/transport";
 import type { WorkerEnv } from "@/lib/env";
@@ -46,7 +46,7 @@ export async function runScheduled(
       now,
       globalEnabled: env.PUBLISHING_ENABLED === "true",
     }),
-    tokens: await refreshInstagramTokens(env, {
+    tokens: await refreshTokens(env, {
       transport: options.transport ?? liveTransport(),
       now,
     }),

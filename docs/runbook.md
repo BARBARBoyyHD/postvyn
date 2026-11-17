@@ -58,24 +58,27 @@ and its state. Connecting is owner-only.
 
 | Platform | Values the adapter reads | Where they come from |
 |---|---|---|
-| X | `apiKey`, `apiSecret`, `accessToken`, `accessSecret` | X developer portal, OAuth 1.0a user context |
+| YouTube | `clientId`, `clientSecret`, `refreshToken` | Google Cloud console — OAuth client; the consent flow runs outside the app |
 | Instagram | `accessToken` (long-lived IG user token) | Meta app dashboard |
 | Threads | `accessToken` (Threads user token) | Meta app dashboard |
 | TikTok | none — never automated | the manual pack on the post page |
 
 **→ If you skip this** you half-fill the form, the connect call fails with a `422`, and you have
-pasted three of four secrets into a screen for nothing.
+pasted two of three secrets into a screen for nothing.
 
-### 1.2 X — through the app
+### 1.2 YouTube — through the app
 
 1. Sign in as the owner, open `/channels`, pick the brand in the switcher.
-2. Fill **account id** — the platform's numeric user id, not the handle. Handles change; ids do not.
-3. Fill the four credential fields, press **connect**.
-4. The row appears as `connected`. The form clears itself on success.
+2. Fill the **label** — the account reference is resolved from the platform while connecting, not
+   typed, so a mistyped id cannot fake a connection.
+3. Fill **client id**, **client secret** and **refresh token**, press **connect**.
+4. The row appears as `active` only after the refresh token mints an access token. The form clears
+   itself on success.
 
-**→ If you paste the handle instead of the id**, the channel looks connected and every publish fails
-at the platform with an error that names an account you cannot find. Confirm the id in the X
-developer portal before you type it.
+**→ If the OAuth consent screen is still in "Testing"**, everything looks right at connect and the
+channel dies within 7 days with `invalid_grant`. Publish the consent screen to **In production**
+before you paste anything (Google OAuth2 doc, read 2026-11-17); the "unverified app" warning is
+expected and harmless for a one-operator tool.
 
 ### 1.3 Instagram / Threads — through the route (no form yet)
 
@@ -182,7 +185,7 @@ the same records; the queries here are for when you need them all at once.
 | `queued` | waiting for its `run_after` | nothing, unless the switch is off |
 | `awaiting_platform` | Meta accepted a container, the post is not ready | nothing — the next tick polls it |
 | `failed` + `last_error` starts `uncertain:` | the platform may have accepted it | check the account **before** anything else |
-| `dead` | terminal: attempts exhausted, spec blocked, reapproval needed, or out of credits | fix the cause, then §3.3 |
+| `dead` | terminal: attempts exhausted, spec blocked, reapproval needed, or out of quota | fix the cause, then §3.3 |
 | any state, channel `reauth_required` | the credential is dead | §2.1 |
 
 ### 3.1 Read the failure — never guess it
@@ -196,7 +199,7 @@ pnpm exec wrangler d1 execute postvyn-db --remote --json --command \
 
 Each attempt also raises `jobs.attempts` and stamps `attempt_started_at` / `attempt_finished_at`;
 the post page renders those as *Attempts*. `publish_results` holds the platform's own words, and
-`activity_log` holds `publish.cost_blocked` and `channel.reauth_required` as separate actions — read
+`activity_log` holds `publish.quota_blocked` and `channel.reauth_required` as separate actions — read
 those two first, because they are the two failures with a one-line fix.
 
 ### 3.2 Match the fix to the verdict
@@ -207,13 +210,12 @@ those two first, because they are the two failures with a one-line fix.
   re-approves the content stored right now and sends once.
   **→ If you requeue an uncertain job** you risk a duplicate post that cannot be undone from this
   side. This is the one row where the safe action is "look first".
-- **`cost_blocked:` or `publish.cost_blocked`** — X has no free tier and no balance API. Top up in
-  the X developer portal, then declare it:
-  ```bash
-  pnpm exec wrangler secret put X_CREDITS_CONFIGURED   # value: true
-  ```
-  **→ If you retry before topping up** the adapter refuses again, one attempt is gone, and the job
-  walks to `dead` for a billing reason.
+- **`quota_blocked:` or `publish.quota_blocked`** — YouTube's daily upload budget is spent (an
+  attempt costs a slot even when it fails). There is nothing to do but wait: the budget resets at
+  midnight Pacific, or raise the project's quota in the Google Cloud console (Google's audit is the
+  gate for that). Requeue per §3.3 after the reset.
+  **→ If you requeue while the budget is still spent** the attempt is refused again and the job walks
+  back to `dead` for a quota reason — the tick cannot create tomorrow's quota today.
 - **`reauth_required`** — §2.1, then the tick.
 - **`spec_blocked` / `reapproval_required`** — the content, not the queue: edit the variant, approve
   it again, press publish. Requeueing cannot fix text.

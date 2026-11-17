@@ -66,7 +66,7 @@ postvyn/                       documents + spec changes only — no package.json
 │       ├── src/app/           routes — thin: parse → call a domain function → render
 │       ├── src/db/            Drizzle schema + repository — THE ONLY place with the D1 binding
 │       ├── src/lib/           domain: status machine, spec engine, approval hash, crypto, job claim
-│       └── src/publishers/    IG / Threads / X adapters, TikTok refusal — THE ONLY platform HTTP
+│       └── src/publishers/    IG / Threads / YouTube adapters, TikTok refusal — THE ONLY platform HTTP
 ├── docs/                      001 PRD · 003 ITA · 004 PEP · 005 REQUIREMENTS · 006 USER STORIES
 ├── journal/                   build log (vault)
 ├── openspec/                  changes in flight + the archived capability specs
@@ -90,7 +90,9 @@ change — not because "it felt big".
    becomes `published`. No exceptions, including in tests.
 5. **TikTok is never automated.** Their guidelines name "a utility tool to help upload contents to
    the account(s) you or your team manages" as unacceptable. Manual pack only. Do not soften this.
-6. **Money is shown before it is spent.** X is pay-per-use ($0.015/post, $0.20 with a link).
+6. **The scarce resource is shown before it is spent.** Money, quota, a manual step — whatever a
+   publish costs, the operator sees it before it happens. *(Lineup amended 2026-11-17: X removed,
+   YouTube added — quota, not dollars, is the metered resource now.)*
 7. **Tenant isolation is not optional.** The only module holding the D1 binding takes a
    `WorkspaceContext`; the workspace comes from the session, never from a request body or query param.
 8. **Nothing publishes without a human approval record.** No auto-approve flag, no escape hatch.

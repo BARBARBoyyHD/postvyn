@@ -36,11 +36,26 @@ function input(overrides: Partial<PublishInput> = {}): PublishInput {
     platform: "instagram",
     channelId: "chn-ig",
     accountRef: IG_USER,
+    title: "",
     caption: "A caption",
     hashtags: ["#one"],
     media: [
-      { id: "med-1", key: "media/ws/a.jpg", url: `${BASE}/media/ws/a.jpg`, kind: "image" },
-      { id: "med-2", key: "media/ws/b.jpg", url: `${BASE}/media/ws/b.jpg`, kind: "image" },
+      {
+        id: "med-1",
+        key: "media/ws/a.jpg",
+        url: `${BASE}/media/ws/a.jpg`,
+        kind: "image",
+        width: null,
+        height: null,
+      },
+      {
+        id: "med-2",
+        key: "media/ws/b.jpg",
+        url: `${BASE}/media/ws/b.jpg`,
+        kind: "image",
+        width: null,
+        height: null,
+      },
     ],
     credentials: { accessToken: "ig-token" },
     ...overrides,
@@ -88,7 +103,16 @@ describe("Instagram shapes", () => {
     const recorded = fixtureTransport(reelParked);
     const publisher = instagramPublisher({ transport: recorded.transport });
     const reel = input({
-      media: [{ id: "med-v", key: "media/ws/reel.mp4", url: `${BASE}/media/ws/reel.mp4`, kind: "video" }],
+      media: [
+        {
+          id: "med-v",
+          key: "media/ws/reel.mp4",
+          url: `${BASE}/media/ws/reel.mp4`,
+          kind: "video",
+          width: null,
+          height: null,
+        },
+      ],
     });
 
     const created = await publisher.publish(reel);
@@ -124,7 +148,18 @@ describe("Instagram shapes", () => {
     const recorded = fixtureTransport(containerRejected);
     const publisher = instagramPublisher({ transport: recorded.transport });
     const created = await publisher.publish(
-      input({ media: [{ id: "med-1", key: "media/ws/a.jpg", url: `${BASE}/media/ws/a.jpg`, kind: "image" }] }),
+      input({
+        media: [
+          {
+            id: "med-1",
+            key: "media/ws/a.jpg",
+            url: `${BASE}/media/ws/a.jpg`,
+            kind: "image",
+            width: null,
+            height: null,
+          },
+        ],
+      }),
     );
 
     const failed = await publisher.verify(created, input());

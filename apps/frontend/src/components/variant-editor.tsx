@@ -206,7 +206,7 @@ export function VariantEditor({
           <span className={over ? "text-[#f43f5e]" : "text-zavron-muted"}>
             {count.counted}
             {count.ceiling !== null ? ` / ${count.ceiling}` : ""}
-            {count.linkSubstituted ? " · link counted" : ""}
+            {count.unit === "bytes" ? " · bytes" : ""}
           </span>
           <span className={`uppercase ${stateColor}`}>{state.replace("_", " ")}</span>
           <span className="text-zavron-muted/70">{STATUS_COPY[status]}</span>

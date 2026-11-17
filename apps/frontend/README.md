@@ -87,7 +87,7 @@ pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY
 turns every channel into `reauth_required`; rotating it is a `channel_credentials.key_version`
 re-encrypt pass, not a replace-and-restart. Back it up somewhere that is not the D1 export bucket.
 
-Platform credentials (Instagram, Threads, X) are **not** environment variables at all — they are
+Platform credentials (Instagram, Threads, YouTube) are **not** environment variables at all — they are
 entered in the app and stored encrypted in `channel_credentials`.
 
 ## Where the rest of the truth lives

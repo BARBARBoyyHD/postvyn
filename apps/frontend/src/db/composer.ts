@@ -177,7 +177,7 @@ export function composer(env: Bindings) {
 
       // the variant's post carries the workspace; check it here rather than trusting the id alone
       const [post] = await db
-        .select({ id: s.posts.id, workspaceId: s.posts.workspaceId, status: s.posts.status })
+        .select({ id: s.posts.id, workspaceId: s.posts.workspaceId, status: s.posts.status, title: s.posts.title })
         .from(s.posts)
         .where(eq(s.posts.id, variant.postId))
         .limit(1);
@@ -194,6 +194,7 @@ export function composer(env: Bindings) {
 
       const facts = await mediaFacts(c, draft.mediaIds);
       const verdict = validate(platform, {
+        title: post.title,
         caption: draft.caption,
         hashtags: draft.hashtags,
         media: [...facts.values()],

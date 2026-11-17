@@ -87,6 +87,7 @@ function input(): PublishInput {
     platform: "threads",
     channelId,
     accountRef: ACCOUNT_REF,
+    title: "M5 post",
     caption: "the caption",
     hashtags: ["#one"],
     media: [],
@@ -189,7 +190,7 @@ describe("a real publish has to name where it is going", () => {
 
   it("refuses a confirmation for another platform", () => {
     const report = confirmTargets(
-      [{ platform: "x", account: ACCOUNT_REF }],
+      [{ platform: "instagram", account: ACCOUNT_REF }],
       [{ variantId: VARIANT, platform: "threads", accountRef: ACCOUNT_REF, label: null }],
     );
     expect(report.ok).toBe(false);
@@ -211,13 +212,15 @@ describe("a real publish has to name where it is going", () => {
     const report = confirmTargets(
       [
         { platform: "threads", account: ACCOUNT_REF },
-        { platform: "x", account: "x-2" },
+        { platform: "instagram", account: "ig-2" },
       ],
       [{ variantId: VARIANT, platform: "threads", accountRef: ACCOUNT_REF, label: null }],
     );
     expect(report.ok).toBe(false);
     if (report.ok) return;
-    expect(report.failures).toEqual([{ variantId: null, reason: "unknown_target", expected: "x:x-2" }]);
+    expect(report.failures).toEqual([
+      { variantId: null, reason: "unknown_target", expected: "instagram:ig-2" },
+    ]);
   });
 });
 

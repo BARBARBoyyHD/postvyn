@@ -9,7 +9,7 @@
  */
 import Link from "next/link";
 
-const PLATFORMS = ["Instagram", "Threads", "X", "TikTok"];
+const PLATFORMS = ["Instagram", "Threads", "YouTube", "TikTok"];
 
 const PILLARS = [
   {

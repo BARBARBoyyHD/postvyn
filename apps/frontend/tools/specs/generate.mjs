@@ -11,12 +11,19 @@
  *
  * The digest is over the raw markdown, so "stale" is a fact, not a date comparison somebody has to
  * remember to update.
+ *
+ * YouTube is the exception: its limits come from the API reference, not from a markdown file, so they
+ * are authored in `src/lib/specs/youtube-rules.ts` and only assembled into the map here. Its version
+ * number records the reference rather than a digest (`platforms.ts` header).
  */
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
-const PLATFORMS = ["instagram", "threads", "x", "tiktok"];
+/** Parsed from markdown in the content repo. */
+const MARKDOWN_PLATFORMS = ["instagram", "threads", "tiktok"];
+/** Everything the app knows a rule set for, including the hand-authored one. */
+const PLATFORMS = [...MARKDOWN_PLATFORMS, "youtube"];
 const SPECS_ROOT =
   process.env.POSTVYN_SPECS_ROOT ??
   path.resolve("../../../../uwi/Projetcs/Uwi's-Department/social");
@@ -38,8 +45,6 @@ function parse(platform, markdown) {
   };
 
   const ceiling = first(/(\d{3,4})\s*chars/i);
-  // X's link rule is the one everybody gets wrong: the URL is replaced by a fixed cost, not measured.
-  const urlCost = first(/URLs? count as (\d+) chars/i);
 
   // Ranges are written three different ways in the four files: "Hashtags: 3-5", "3-5 is plenty",
   // "3-5 hashtags". Matching only the first form silently produced `null` for two platforms.
@@ -76,19 +81,24 @@ function parse(platform, markdown) {
   return {
     platform,
     captionCeiling: ceiling,
+    // The content repo writes every ceiling in characters. Bytes are YouTube's arithmetic and are
+    // authored with it (`youtube-rules.ts`), never inferred from a markdown sentence.
+    captionUnit: "characters",
+    titleCeiling: null,
+    tagsCeiling: null,
     hashtags: { min: hashtagRange ? Number(hashtagRange[1]) : null, max: hashtagMax },
     hashtagsShareCaptionBudget: sharesBudget,
     mediaMax,
+    mediaKind: "any",
     maxBytesPerImage: maxBytes ? maxBytes * 1024 * 1024 : null,
     preferredAspect: aspect,
     // Where the hashtags go: Instagram's live in the first comment by choice, the others inline.
     hashtagPlacement: platform === "instagram" ? "first_comment" : "caption",
-    linkCost: urlCost,
     notes,
   };
 }
 
-const sources = PLATFORMS.map((platform) => {
+const sources = MARKDOWN_PLATFORMS.map((platform) => {
   const { file, raw } = readSource(platform);
   return {
     platform,
@@ -100,46 +110,66 @@ const sources = PLATFORMS.map((platform) => {
 
 const generatedAt = new Date().toISOString().slice(0, 10);
 
-const map = Object.fromEntries(
-  sources.map(({ platform, rule, digest }) => [
-    platform,
-    { ...rule, sourceDigest: digest, sourcePath: `social/${platform}/specs.md` },
-  ]),
+/** Nested JSON as an object literal, indented to sit under its platform key. */
+const indent = (text) =>
+  text
+    .split("\n")
+    .map((line, index) => (index === 0 ? line : `  ${line}`))
+    .join("\n");
+
+const entries = sources.map(
+  ({ platform, rule, digest }) =>
+    `  ${JSON.stringify(platform)}: ${indent(
+      JSON.stringify({ ...rule, sourceDigest: digest, sourcePath: `social/${platform}/specs.md` }, null, 2),
+    )}`,
 );
 
 const body = `/**
  * GENERATED — do not edit by hand. Run \`pnpm specs:generate\`.
  *
- * Source: \`social/<platform>/specs.md\` in the content repo (Uwi's-Department).
+ * Source: \`social/<platform>/specs.md\` in the content repo (Uwi's-Department), for Instagram, Threads
+ * and TikTok. YouTube's limits come from the API reference instead and are authored in
+ * \`youtube-rules.ts\`; this file only assembles the map the rest of the app reads.
+ *
  * Generated: ${generatedAt}
  * Digests:   ${sources.map((s) => `${s.platform}=${s.digest}`).join("  ")}
  *
  * Each digest is over that platform's raw markdown, so \`pnpm specs:check\` can answer "is this copy
  * still true" without a human comparing two files by eye.
  */
+import { YOUTUBE_RULE } from "./youtube-rules";
 
 export type Platform = ${PLATFORMS.map((p) => `"${p}"`).join(" | ")};
 
 export interface PlatformRule {
   platform: Platform;
-  /** Platform's own caption ceiling, in characters. */
+  /** Platform's own caption ceiling, in \`captionUnit\`. */
   captionCeiling: number | null;
+  /** How the platform counts the caption: characters, or UTF-8 bytes (YouTube's API counts bytes). */
+  captionUnit: "characters" | "bytes";
+  /** The post's title where the platform has one as the video's title (YouTube \`snippet.title\`). */
+  titleCeiling: number | null;
+  /** The tag list's whole length in characters, commas and quotes included (YouTube: 500). */
+  tagsCeiling: number | null;
   hashtags: { min: number | null; max: number | null };
   /** Threads: hashtags live inside the caption, so they spend the same budget. */
   hashtagsShareCaptionBudget: boolean;
   mediaMax: number | null;
+  /** What the platform accepts: anything postable, or video only (YouTube uploads one video). */
+  mediaKind: "any" | "video";
   maxBytesPerImage: number | null;
   preferredAspect: string | null;
   hashtagPlacement: "caption" | "first_comment";
-  /** X counts any URL as this many characters regardless of its real length. */
-  linkCost: number | null;
   notes: string[];
-  /** sha256 of the source markdown this rule was parsed from. */
+  /** sha256 of the source markdown this rule was parsed from — or the API reference, for YouTube. */
   sourceDigest: string;
   sourcePath: string;
 }
 
-export const PLATFORM_RULES: Record<Platform, PlatformRule> = ${JSON.stringify(map, null, 2)};
+export const PLATFORM_RULES: Record<Platform, PlatformRule> = {
+${entries.join(",\n")},
+  "youtube": YOUTUBE_RULE
+};
 
 export const PLATFORMS: Platform[] = ${JSON.stringify(PLATFORMS)};
 
@@ -182,7 +212,7 @@ for (const { rule } of sources) {
     `  ${rule.platform.padEnd(10)} ceiling ${String(rule.captionCeiling).padStart(4)}` +
       ` · tags ${rule.hashtags.min}-${rule.hashtags.max}` +
       ` · media ${rule.mediaMax}` +
-      `${rule.linkCost ? ` · link ${rule.linkCost}` : ""}` +
       `${rule.hashtagsShareCaptionBudget ? " · shared budget" : ""}`,
   );
 }
+console.log("  youtube    ceiling 5000 bytes · 1 video · authored in youtube-rules.ts");

@@ -76,7 +76,7 @@ export const channels = sqliteTable(
     brandId: text("brand_id")
       .notNull()
       .references(() => brands.id, { onDelete: "cascade" }),
-    platform: text("platform", { enum: ["instagram", "threads", "x", "tiktok"] }).notNull(),
+    platform: text("platform", { enum: ["instagram", "threads", "youtube", "tiktok"] }).notNull(),
     /** The platform's own account id — never the mutable handle. */
     accountRef: text("account_ref").notNull(),
     label: text("label"),
@@ -265,7 +265,12 @@ export const publishResults = sqliteTable(
     variantId: text("variant_id")
       .notNull()
       .references(() => variants.id, { onDelete: "cascade" }),
-    platform: text("platform", { enum: ["instagram", "threads", "x", "tiktok"] }).notNull(),
+    /**
+     * The platform the result came from. `x` is absent here on purpose and still allowed by the table's
+     * CHECK: X left the lineup on 2026-11-17, and historical rows keep reading (design decisions 7–8).
+     * New rows cannot be `x` — the union, the registry and the connect schema all refuse it.
+     */
+    platform: text("platform", { enum: ["instagram", "threads", "youtube", "tiktok"] }).notNull(),
     platformPostId: text("platform_post_id"),
     url: text("url"),
     raw: text("raw"),

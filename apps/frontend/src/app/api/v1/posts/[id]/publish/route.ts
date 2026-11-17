@@ -29,7 +29,7 @@ import { assertCan } from "@/lib/roles";
 export const dynamic = "force-dynamic";
 
 const confirmationSchema = z.object({
-  platform: z.enum(["instagram", "threads", "x", "tiktok"]),
+  platform: z.enum(["instagram", "threads", "youtube", "tiktok"]),
   account: z.string().min(1),
 });
 

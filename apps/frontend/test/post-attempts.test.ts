@@ -42,10 +42,10 @@ async function seed() {
     env.DB.prepare("insert into brands (id, workspace_id, slug, name) values ('b-a', ?, 'a', 'A')").bind(WS_A),
     env.DB.prepare("insert into brands (id, workspace_id, slug, name) values ('b-b', ?, 'b', 'B')").bind(WS_B),
     env.DB.prepare(
-      "insert into channels (id, brand_id, platform, account_ref) values ('c-a', 'b-a', 'x', 'a')",
+      "insert into channels (id, brand_id, platform, account_ref) values ('c-a', 'b-a', 'threads', 'a')",
     ),
     env.DB.prepare(
-      "insert into channels (id, brand_id, platform, account_ref) values ('c-b', 'b-b', 'x', 'b')",
+      "insert into channels (id, brand_id, platform, account_ref) values ('c-b', 'b-b', 'threads', 'b')",
     ),
     env.DB.prepare(
       "insert into posts (id, workspace_id, brand_id, title, format, status) values (?, ?, 'b-a', 'Detail A', 'text', 'scheduled')",
@@ -77,10 +77,10 @@ async function seed() {
       "insert into jobs (id, kind, payload, state, attempts, run_after, created_at, updated_at) values (?, 'publish_variant', ?, 'queued', 0, ?, ?, ?)",
     ).bind(JOB_B, JSON.stringify({ variantId: VARIANT_B }), now + 60_000, now, now),
     env.DB.prepare(
-      "insert into publish_results (id, variant_id, platform, raw, state, created_at) values ('pub-a', ?, 'x', '{}', 'uncertain', ?)",
+      "insert into publish_results (id, variant_id, platform, raw, state, created_at) values ('pub-a', ?, 'threads', '{}', 'uncertain', ?)",
     ).bind(VARIANT_A, now),
     env.DB.prepare(
-      "insert into publish_results (id, variant_id, platform, raw, state, created_at) values ('pub-b', ?, 'x', '{}', 'uncertain', ?)",
+      "insert into publish_results (id, variant_id, platform, raw, state, created_at) values ('pub-b', ?, 'threads', '{}', 'uncertain', ?)",
     ).bind(VARIANT_B, now),
   ]);
 }
@@ -103,7 +103,7 @@ describe("post detail: attempts and publish results", () => {
   it("surfaces an uncertain publish result", async () => {
     const detail = await repo.getPostDetail(ctxA, POST_A);
     expect(detail!.publishResults.map((result) => result.state)).toEqual(["uncertain"]);
-    expect(detail!.publishResults[0]?.platform).toBe("x");
+    expect(detail!.publishResults[0]?.platform).toBe("threads");
   });
 
   it("never pulls another workspace's attempts into this post", async () => {

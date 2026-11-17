@@ -89,7 +89,15 @@ export function mediaResolver(env: Bindings & { R2_PUBLIC_BASE?: string }) {
           };
         }
 
-        media.push({ id, key, url, kind: row.mime.startsWith("video/") ? "video" : "image" });
+        media.push({
+          id,
+          key,
+          url,
+          kind: row.mime.startsWith("video/") ? "video" : "image",
+          // Classification only: YouTube decides Short vs long-form from the file, not from a field.
+          width: row.width ?? null,
+          height: row.height ?? null,
+        });
       }
 
       return { ok: true, media };
