@@ -16,10 +16,11 @@ aliases: [USER-STORIES, 006, stories]
 **Status:** Living document — expected to change
 **Derived from:** PRD v0.1 (`001-PRD.md`), ITA v0.3 (`003-ITA.md`), PEP v0.1 (`004-PEP.md`)
 
-> **No test files yet, on purpose.** These stories will move as the product is used. Writing test
-> scaffolding against stories that are still settling produces tests that encode the wrong
-> requirements. Acceptance notes below are one line each — enough to know when a story is done, not
-> enough to over-fit. Come back and write tests when M3 lands and the shape stops moving.
+> **Tests exist now.** When this file was written there were none, on purpose: scaffolding against
+> stories that are still settling produces tests that encode the wrong requirements. `apps/frontend/test/`
+> holds 25 test files today (spec engine, status machine, approval hash, publishers over recorded
+> fixtures), and none of them needs credentials to pass. Acceptance notes below are one line each —
+> enough to know when a story is done, not enough to over-fit.
 
 ---
 
@@ -150,16 +151,16 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
-| US-036 | As an operator I connect an Instagram channel | token encrypted at rest; channel status `connected` | Must | M5 | ☐ |
-| US-037 | As an operator I connect a Threads channel | same flow; tester access is enough | Must | M5 | ☐ |
-| US-038 | As an operator I connect an X channel | OAuth 1.0a user context; cost shown before first post | Must | M5 | ☐ |
-| US-039 | As an operator I publish now, deliberately | confirmation names the platform and account first | Must | M5 | ☐ |
-| US-040 | As an operator I can see exactly what would be sent | dry run prints the calls; never touches the network | Must | M5 | ☐ |
-| US-041 | As an operator I only believe it when it is verified | post read back from the platform; URL stored; status `published` only then | Must | M5 | ☐ |
-| US-042 | As an operator TikTok gives me an upload pack, not a post | pack file + checklist; completion recorded manually | Must | M5 | ☐ |
-| US-043 | As an operator I hear about a failed scheduled publish | email with platform error + link to the post | Should | M5 | ☐ |
-| US-044 | As an operator an expired token tells me to reconnect | channel flips to `reauth_required`; board shows it | Should | M5 | ☐ |
-| US-045 | As an operator my Instagram/Threads tokens refresh themselves | monthly cron extends them; no manual re-auth | Should | M5 | ☐ |
+| US-036 | As an operator I connect an Instagram channel | token encrypted at rest; channel status `connected` | Must | M5 | ◐ — connect endpoint + encryption work for any platform, but the only connect form is X's; no Meta OAuth, tokens are minted outside the app |
+| US-037 | As an operator I connect a Threads channel | same flow; tester access is enough | Must | M5 | ◐ — same gap as US-036: no Threads connect form, no Meta OAuth; credentials enter through the API only |
+| US-038 | As an operator I connect an X channel | OAuth 1.0a user context; cost shown before first post | Must | M5 | ☑ |
+| US-039 | As an operator I publish now, deliberately | confirmation names the platform and account first | Must | M5 | ◐ — the server requires `{platform, account}` and refuses a mismatch (tested), but the dialog renders the platform only; the account is never shown |
+| US-040 | As an operator I can see exactly what would be sent | dry run prints the calls; never touches the network | Must | M5 | ◐ — the dry run is offline and the response lists the calls, but the dialog shows only the call count, not the calls |
+| US-041 | As an operator I only believe it when it is verified | post read back from the platform; URL stored; status `published` only then | Must | M5 | ◐ — read-back is the only path to `published` and is fixture-tested; no live platform publish observed end-to-end |
+| US-042 | As an operator TikTok gives me an upload pack, not a post | pack file + checklist; completion recorded manually | Must | M5 | ☑ |
+| US-043 | As an operator I hear about a failed scheduled publish | email with platform error + link to the post | Should | M5 | ◐ — message composed and sent from the tick with error, account, link and one action (tested), but delivery is the dev outbox: Resend is deferred, no inbox has received one |
+| US-044 | As an operator an expired token tells me to reconnect | channel flips to `reauth_required`; board shows it | Should | M5 | ◐ — flip + audit row tested; channels page and post detail say "reconnect required", but the board shows no channel state |
+| US-045 | As an operator my Instagram/Threads tokens refresh themselves | monthly cron extends them; no manual re-auth | Should | M5 | ◐ — Instagram refresh runs on the cron tick (tested); Threads tokens are never refreshed — the pass filters `platform = instagram` |
 
 ---
 
