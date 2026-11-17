@@ -67,8 +67,14 @@ export default function SignInPage() {
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-16">
         <h1 className="text-2xl font-semibold tracking-tight text-zavron-ink">Sign in</h1>
         <p className="mt-2 text-sm text-zavron-muted">
-          Accounts are created by the operator. There is no public sign-up — this is a tool for one
-          person and their brands, not a directory.
+          No account yet?{" "}
+          <Link
+            href="/register"
+            className="text-zavron-ink underline decoration-zavron-line underline-offset-4 hover:decoration-zavron-accent"
+          >
+            Create one
+          </Link>{" "}
+          — you will need to verify the address before signing in.
         </p>
 
         <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">

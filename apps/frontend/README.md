@@ -97,7 +97,8 @@ entered in the app and stored encrypted in `channel_credentials`.
 
 ## The first user
 
-There is no public sign-up. Create the account on the machine that owns the database:
+Sign-up is public at `/register` (email verification required). To create the first account on a
+fresh database, create it on the machine that owns the database:
 
 ```bash
 pnpm user:create you@example.com "Your Name"            # local D1

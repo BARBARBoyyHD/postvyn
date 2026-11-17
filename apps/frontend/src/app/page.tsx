@@ -110,6 +110,12 @@ export default function LandingPage() {
             >
               See live status
             </Link>
+            <Link
+              href="/register"
+              className="px-2 py-3 text-sm text-zavron-muted transition-colors hover:text-zavron-ink"
+            >
+              Create an account
+            </Link>
           </div>
 
           <div className="mt-14 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-zavron-line/60 pt-6">

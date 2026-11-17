@@ -17,8 +17,10 @@ memberships are ours, and a second opinion about who may do what is how two auth
 
 ## The first user
 
-There is no public sign-up. `pnpm user:create you@example.com "Your Name" [--remote]` writes the account
-with `email_verified = 1` — someone with database access created it, so a round-trip email would be
+Sign-up is public at `/register`, but it creates an unverified account and sends a verification link.
+`pnpm user:create you@example.com "Your Name" [--remote]` remains the path for a fresh database and
+the first account: it writes the account
+with `email_verified = 1` - someone with database access created it, so a round-trip email would be
 ceremony, not verification. The first account to sign in adopts the seeded, memberless workspace as owner.
 
 ## Traps that cost time here
