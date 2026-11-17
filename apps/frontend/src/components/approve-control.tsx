@@ -12,6 +12,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { slotInputValue } from "@/lib/time";
+
 export function ApproveControl({
   variantId,
   status,
@@ -22,7 +24,7 @@ export function ApproveControl({
   slotAt: number | null;
 }) {
   const router = useRouter();
-  const [value, setValue] = useState(defaultSlot(slotAt));
+  const [value, setValue] = useState(slotInputValue(slotAt));
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -95,18 +97,4 @@ export function ApproveControl({
       </span>
     </div>
   );
-}
-
-/** Tomorrow at 09:00 local, which is the answer nine times out of ten. */
-function defaultSlot(existing: number | null): string {
-  const date = existing ? new Date(existing) : tomorrowAtNine();
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function tomorrowAtNine(): Date {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(9, 0, 0, 0);
-  return date;
 }

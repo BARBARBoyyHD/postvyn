@@ -9,7 +9,7 @@
  * access is not available to the caller. That, plus the ESLint rule, is what stands in for the
  * row-level security D1 does not offer (ADR-014).
  */
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import type { WorkspaceContext } from "@/lib/context";
 import type { Bindings } from "./bindings";
 import { createDb } from "./client";
@@ -38,6 +38,22 @@ export function repository(env: Bindings) {
   const db = createDb(env.DB);
 
   return {
+    // ── workspace settings ────────────────────────────────────────────────────────────────────
+
+    /** The switches and display zone the chrome and the due list need. One row, scoped by id. */
+    async getWorkspaceSettings(input: WorkspaceContext) {
+      const ctx = requireCtx(input);
+      const [row] = await db
+        .select({
+          timezone: s.workspaces.timezone,
+          publishingEnabled: s.workspaces.publishingEnabled,
+        })
+        .from(s.workspaces)
+        .where(eq(s.workspaces.id, ctx.workspaceId))
+        .limit(1);
+      return row ?? null;
+    },
+
     // ── brands ────────────────────────────────────────────────────────────────────────────────
 
     async listBrands(input: WorkspaceContext) {
@@ -248,8 +264,9 @@ export function repository(env: Bindings) {
     // ── post detail ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Everything one post shows: its variants, the media they reference in publish order, and the
-     * audit trail. Four queries for a detail view is fine — it is one post, not a page of cards.
+     * Everything one post shows: its variants, the media they reference in publish order, the audit
+     * trail, and the attempt/result rows that make the history readable. Six queries for a detail view
+     * is fine — it is one post, not a page of cards.
      */
     async getPostDetail(input: WorkspaceContext, id: string) {
       const ctx = requireCtx(input);
@@ -295,7 +312,152 @@ export function repository(env: Bindings) {
 
       const activity = await this.listActivity(ctx, id);
 
-      return { post, variants: variantRows, media: mediaRows, activity };
+      const variantIds = variantRows.map((variant) => variant.id);
+
+      // Attempts live on the job, keyed by the variant id inside its JSON payload. Scoped through the
+      // variants we just read from this post, so a job cannot be pulled in from another tenant.
+      const attemptRows = variantIds.length
+        ? await db
+            .select({
+              id: s.jobs.id,
+              variantId: sql<string>`json_extract(${s.jobs.payload}, '$.variantId')`,
+              state: s.jobs.state,
+              attempts: s.jobs.attempts,
+              runAfter: s.jobs.runAfter,
+              attemptStartedAt: s.jobs.attemptStartedAt,
+              attemptFinishedAt: s.jobs.attemptFinishedAt,
+              lastError: s.jobs.lastError,
+            })
+            .from(s.jobs)
+            .where(
+              inArray(
+                sql<string>`json_extract(${s.jobs.payload}, '$.variantId')`,
+                variantIds,
+              ),
+            )
+            .orderBy(desc(s.jobs.createdAt))
+        : [];
+
+      // The publish read-back: `uncertain` is the one state that needs a human, so the detail view
+      // must be able to see it without parsing the activity log.
+      const publishRows = variantIds.length
+        ? await db
+            .select({
+              id: s.publishResults.id,
+              variantId: s.publishResults.variantId,
+              platform: s.publishResults.platform,
+              state: s.publishResults.state,
+              url: s.publishResults.url,
+              createdAt: s.publishResults.createdAt,
+            })
+            .from(s.publishResults)
+            .where(inArray(s.publishResults.variantId, variantIds))
+            .orderBy(desc(s.publishResults.createdAt))
+        : [];
+
+      return {
+        post,
+        variants: variantRows,
+        media: mediaRows,
+        activity,
+        attempts: attemptRows,
+        publishResults: publishRows,
+      };
+    },
+
+    // ── review queue ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Posts waiting for a human, with the variants an operator can approve in one action.
+     *
+     * `review` is the status the product uses for "no approval currently counts": approval moves the
+     * post to `scheduled`, an edit or a revoke moves it back. Two queries, because the list is read as
+     * one screen and a per-post variant query would be the N+1 the board test already forbids.
+     */
+    async listReviewQueue(
+      input: WorkspaceContext,
+      filters: { brandId: string; limit?: number },
+    ) {
+      const ctx = requireCtx(input);
+      const limit = Math.min(Math.max(filters.limit ?? 60, 1), 100);
+
+      const posts = await db
+        .select()
+        .from(s.posts)
+        .where(
+          and(
+            eq(s.posts.workspaceId, ctx.workspaceId),
+            eq(s.posts.brandId, filters.brandId),
+            eq(s.posts.status, "review"),
+          ),
+        )
+        .orderBy(s.posts.scheduleAt, s.posts.createdAt)
+        .limit(limit);
+
+      const variants = posts.length
+        ? await db
+            .select({
+              id: s.variants.id,
+              postId: s.variants.postId,
+              caption: s.variants.caption,
+              hashtags: s.variants.hashtags,
+              mediaIds: s.variants.mediaIds,
+              specState: s.variants.specState,
+              platform: s.channels.platform,
+            })
+            .from(s.variants)
+            .innerJoin(s.channels, eq(s.variants.channelId, s.channels.id))
+            .where(
+              inArray(
+                s.variants.postId,
+                posts.map((post) => post.id),
+              ),
+            )
+            .orderBy(s.channels.platform)
+        : [];
+
+      return { posts, variants };
+    },
+
+    // ── work queue ───────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Jobs due inside a window, for the operator's "what ships tomorrow" question.
+     *
+     * Scoped through the post, because a job row carries no workspace id — its payload names a variant
+     * and the variant's post decides the tenant. Joining without that filter would list every tenant.
+     */
+    async listDueJobs(input: WorkspaceContext, window: { from: number; to: number }) {
+      const ctx = requireCtx(input);
+      return db
+        .select({
+          id: s.jobs.id,
+          state: s.jobs.state,
+          runAfter: s.jobs.runAfter,
+          attempts: s.jobs.attempts,
+          lastError: s.jobs.lastError,
+          variantId: s.variants.id,
+          platform: s.channels.platform,
+          postId: s.posts.id,
+          postTitle: s.posts.title,
+          brandName: s.brands.name,
+        })
+        .from(s.jobs)
+        .innerJoin(s.variants, sql`${s.variants.id} = json_extract(${s.jobs.payload}, '$.variantId')`)
+        .innerJoin(
+          s.posts,
+          and(eq(s.variants.postId, s.posts.id), eq(s.posts.workspaceId, ctx.workspaceId)),
+        )
+        .innerJoin(s.brands, eq(s.posts.brandId, s.brands.id))
+        .innerJoin(s.channels, eq(s.variants.channelId, s.channels.id))
+        .where(
+          and(
+            sql`${s.jobs.state} in ('queued', 'awaiting_platform')`,
+            gte(s.jobs.runAfter, window.from),
+            lte(s.jobs.runAfter, window.to),
+          ),
+        )
+        .orderBy(s.jobs.runAfter);
     },
 
     // ── board read model ─────────────────────────────────────────────────────────────────────

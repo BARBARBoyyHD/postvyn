@@ -12,6 +12,7 @@ import { currentRequest } from "@/auth/current";
 import { ApproveControl } from "@/components/approve-control";
 import { PublishNowButton } from "@/components/publish-now-button";
 import { repository } from "@/db/repository";
+import { formatAttemptDuration } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,17 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   // A post in another workspace is not "forbidden" — it does not exist here.
   if (!detail) notFound();
 
-  const { post, variants, media, activity } = detail;
+  const { post, variants, media, activity, attempts, publishResults } = detail;
   const mediaById = new Map(media.map((row) => [row.id, row]));
+  const platformByVariant = new Map(variants.map((variant) => [variant.id, variant.platform]));
+
+  // `uncertain` is not a state to badge: the platform may have accepted the post. It goes above the
+  // fold, in words, before any control that might send it again.
+  const uncertainPlatforms = [
+    ...new Set(
+      publishResults.filter((result) => result.state === "uncertain").map((result) => result.platform),
+    ),
+  ];
 
   return (
     <main className="mx-auto max-w-4xl px-5 py-8">
@@ -54,6 +64,21 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
           <Meta label="slot" value={new Date(post.scheduleAt).toISOString().slice(0, 16).replace("T", " ")} />
         ) : null}
       </dl>
+
+      {uncertainPlatforms.length > 0 ? (
+        <section
+          role="alert"
+          className="mt-6 rounded-xl border border-[#fbbf24]/50 bg-[#fbbf24]/5 px-4 py-3"
+        >
+          <h2 className="text-sm font-medium text-zavron-ink">Publish result unknown</h2>
+          <p className="mt-1 text-sm leading-relaxed text-zavron-muted">
+            The platform may have accepted this. Check the account before retrying.
+          </p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[#fbbf24]">
+            affected: {uncertainPlatforms.join(", ")}
+          </p>
+        </section>
+      ) : null}
 
       {resolved.ctx.role === "owner" ? (
         <div className="mt-6">
@@ -147,6 +172,73 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
         <h2 className="border-b border-zavron-line pb-2 font-mono text-[11px] uppercase tracking-[0.18em] text-zavron-muted">
           History
         </h2>
+
+        {attempts.length > 0 ? (
+          <div className="mt-4">
+            <h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-zavron-muted">
+              Attempts
+            </h3>
+            <ol className="mt-2 space-y-1">
+              {attempts.map((job) => {
+                const duration = formatAttemptDuration(
+                  job.attemptStartedAt,
+                  job.attemptFinishedAt,
+                );
+                return (
+                  <li key={job.id} className="flex flex-wrap items-baseline gap-2 text-sm">
+                    <span className="text-zavron-ink">
+                      {platformByVariant.get(job.variantId) ?? "variant"}
+                    </span>
+                    <span className="font-mono text-[10px] text-zavron-muted">
+                      attempt {job.attempts}
+                      {duration ? ` · ${duration}` : ""}
+                    </span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-zavron-muted">
+                      {job.state.replace(/_/g, " ")}
+                    </span>
+                    {job.lastError ? (
+                      <span className="font-mono text-[10px] text-zavron-muted/70">
+                        {job.lastError}
+                      </span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        ) : null}
+
+        {publishResults.length > 0 ? (
+          <div className="mt-4">
+            <h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-zavron-muted">
+              Results
+            </h3>
+            <ol className="mt-2 space-y-1">
+              {publishResults.map((result) => (
+                <li key={result.id} className="flex flex-wrap items-baseline gap-2 text-sm">
+                  <span className="text-zavron-ink">{result.platform}</span>
+                  <span
+                    className={`font-mono text-[10px] uppercase tracking-[0.14em] ${resultColor(result.state)}`}
+                  >
+                    {result.state}
+                  </span>
+                  {result.url ? (
+                    <a
+                      href={result.url}
+                      className="font-mono text-[10px] text-zavron-muted underline decoration-zavron-line underline-offset-2 hover:text-zavron-ink"
+                    >
+                      open
+                    </a>
+                  ) : null}
+                  <time className="ml-auto font-mono text-[10px] text-zavron-muted/70">
+                    {new Date(result.createdAt).toISOString().slice(0, 16).replace("T", " ")}
+                  </time>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
+
         {activity.length === 0 ? (
           <p className="mt-3 text-sm text-zavron-muted">Nothing recorded yet.</p>
         ) : (
@@ -167,7 +259,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
       </section>
 
       <p className="mt-10 font-mono text-[10px] uppercase tracking-[0.14em] text-zavron-muted/70">
-        read-only · editing, approval and publishing arrive in M3 and M4
+        approval is bound to content · a 200 is not success until the platform is read back
       </p>
     </main>
   );
@@ -198,6 +290,20 @@ function SpecBadge({ state, version }: { state: string; version: string | null }
       spec: {copy}
     </span>
   );
+}
+
+/** A read-back verdict: teal shipped, amber needs a human, rose failed before the platform. */
+function resultColor(state: string): string {
+  switch (state) {
+    case "succeeded":
+      return "text-[#5eead4]";
+    case "uncertain":
+      return "text-[#fbbf24]";
+    case "failed":
+      return "text-[#f43f5e]";
+    default:
+      return "text-zavron-muted";
+  }
 }
 
 /** `hashtags` and `media_ids` are JSON text in D1; a corrupt value reads as empty, never as a crash. */

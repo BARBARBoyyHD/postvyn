@@ -134,15 +134,15 @@ rather than a `US-` row. If M0 ever needs a `US-` story, that is scope creeping 
 | ID | Story | Acceptance (short) | Pri | M | Done |
 |---|---|---|---|---|---|
 | US-026 | As an operator I approve a variant with a slot | approval records user + content hash + time | Must | M4 | ☑ |
-| US-027 | As an operator I approve several items at once | bulk approve writes one audit row per item | Must | M4 | ◐ — single-variant approve only; no bulk endpoint |
+| US-027 | As an operator I approve several items at once | bulk approve writes one audit row per item | Must | M4 | ☑ |
 | US-028 | As an operator an edit after approval invalidates it | variant returns to `review`; publish returns 409 | Must | M4 | ◐ — mismatch resets to `review` and 409s on the token path (tested); the upload button re-approves instead |
 | US-029 | As an operator a scheduled post ships with my laptop closed | cron tick claims and publishes; nothing depends on my machine | Must | M4 | ◐ — `runTick` + manual `/api/internal/tick` only; no `scheduled` entry, nothing fires unattended |
 | US-030 | As an operator nothing publishes twice | two concurrent ticks, one job → one post | Must | M4 | ☑ |
 | US-031 | As an operator a failed publish retries then parks | 3 attempts with backoff, then `failed` with the platform's own error | Must | M4 | ◐ — 3 attempts + backoff proven, but the terminal state is `dead`; `failed` is the uncertain state |
 | US-032 | As an operator slow platform processing does not lose the post | job parks as `awaiting_platform` and resumes on a later tick | Must | M4 | ◐ — park works; nothing moves `awaiting_platform` back to `queued`, so it never resumes |
 | US-033 | As an operator I can stop all publishing instantly | kill switch per workspace + global, checked at claim time; queue survives | Must | M4 | ◐ — both switches checked at claim and the queue survives (tested); no control surface for the workspace flag |
-| US-034 | As an operator I can see what is due in the next 24 hours | list with slot times in my timezone | Should | M4 | ◐ — `dueBetween`/`dueWindow` exist; no route or view renders the list |
-| US-035 | As an operator every post has a readable history | append-only log: created, edited, approved, attempts, result | Should | M4 | ◐ — post detail shows `activity_log`; job attempts and their timings are not surfaced |
+| US-034 | As an operator I can see what is due in the next 24 hours | list with slot times in my timezone | Should | M4 | ☑ |
+| US-035 | As an operator every post has a readable history | append-only log: created, edited, approved, attempts, result | Should | M4 | ☑ |
 
 ---
 

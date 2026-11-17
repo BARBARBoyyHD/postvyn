@@ -13,7 +13,9 @@ import { redirect } from "next/navigation";
 
 import { currentRequest } from "@/auth/current";
 import { BrandSwitcher } from "@/components/brand-switcher";
+import { PublishingState } from "@/components/publishing-state";
 import { SignOutButton } from "@/components/sign-out-button";
+import { repository } from "@/db/repository";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +40,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const active = resolved.brands?.find((brand) => brand.id === resolved.activeBrandId);
   const accent = active ? readAccent(active.colors) : null;
 
+  // One scoped row for the chrome: the chip must reflect the workspace switch, not just the deploy.
+  const settings = await repository(env).getWorkspaceSettings(resolved.ctx);
+
   return (
     <div
       className="flex min-h-screen flex-col bg-zavron-bg0"
@@ -58,6 +63,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Link href="/board" className="text-zavron-muted transition-colors hover:text-zavron-ink">
               board
             </Link>
+            <Link href="/review" className="text-zavron-muted transition-colors hover:text-zavron-ink">
+              review
+            </Link>
             <Link href="/compose" className="text-zavron-muted transition-colors hover:text-zavron-ink">
               compose
             </Link>
@@ -70,6 +78,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </nav>
 
           <div className="ml-auto flex items-center gap-5">
+            <span className="hidden sm:inline">
+              <PublishingState
+                globalEnabled={env.PUBLISHING_ENABLED === "true"}
+                workspaceEnabled={Boolean(settings?.publishingEnabled)}
+              />
+            </span>
             <BrandSwitcher brands={resolved.brands ?? []} activeBrandId={resolved.activeBrandId} />
             <span className="hidden font-mono text-[11px] uppercase tracking-[0.18em] text-zavron-muted sm:inline">
               {resolved.ctx.role}
