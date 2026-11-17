@@ -25,17 +25,17 @@
 
 ## 4. Runbook
 
-- [ ] 4.1 `docs/runbook.md`: connect a new channel, rotate a token, recover a failed job, re-run the importer, restore from an export
-- [ ] 4.2 Each section written as steps an operator can follow at 11pm, with the error it prevents
-- [ ] 4.3 Verify the restore procedure by actually restoring into a scratch database
+- [x] 4.1 `docs/runbook.md`: connect a new channel, rotate a token, recover a failed job, re-run the importer, restore from an export — five sections plus a triage table (§0) and a "what does not exist yet" table (§6); the importer's behaviour is linked to `db/README.md#Importing the vault` rather than duplicated; indexed from `Home.md`. Contains no invented commands: the channel inspect, job diagnosis, requeue and workspace-switch statements were each run against the local D1
+- [x] 4.2 Each section written as steps an operator can follow at 11pm, with the error it prevents — every step carries a `→ if you skip this` line naming the concrete failure (handle instead of account id → a second channel; requeued `uncertain` → a duplicate post; no `attempts` reset → dead again; wrong Time Travel instant → everything since re-publishes); the two kill switches are a table because "claimed nothing" is not a queue bug
+- [x] 4.3 Verify the restore procedure by actually restoring into a scratch database — run 2026-11-17: `wrangler d1 export postvyn-db --local` (17,122 bytes, 19 `CREATE TABLE` incl. `d1_migrations`) imported into `postvyn-restore-check` through a temporary `wrangler.restore-check.jsonc`; restored counts identical to source (1 workspace, 2 brands, 20 migrations), schema identical (20 `sqlite_master` tables, 49 indexes, `media` 11 / `jobs` 12 columns), and `migrations apply` answered "No migrations to apply!" — i.e. `d1_migrations` travels with the file. Script and scratch DB deleted; transcript is in the runbook. Gap recorded: the export carries no R2 objects
 
 ## 5. Cutover
 
-- [ ] 5.1 One full week of real posts published from the app, with `tools/publish` unused
-- [ ] 5.2 Freeze `tools/publish` — mark it archived in its README, do not delete it yet
-- [ ] 5.3 Make the vault read-only for the app: the importer stays, but nothing writes back
-- [ ] 5.4 Record the week's numbers: posts attempted, published, failed, uncertain, manual packs
-- [ ] 5.5 Decide, with those numbers, whether `tools/publish` is deleted or kept as an archive
+- [ ] 5.1 One full week of real posts published from the app, with `tools/publish` unused — **blocked, not started:** needs seven consecutive days of live posts, which cannot be produced in a session; M5's exit criterion — the first live publish per platform — is itself still open
+- [x] 5.2 Freeze `tools/publish` — mark it archived in its README, do not delete it yet — dated banner added 2026-11-17 at the top of `D:\uwi\Projetcs\Uwi's-Department\tools\publish\README.md`: frozen, Postvyn is the publisher, kept as the behavioural reference and archive, deletion is m6 5.5's decision. No file deleted, no other file touched, not committed in the content repo (left dirty on purpose)
+- [x] 5.3 Make the vault read-only for the app: the importer stays, but nothing writes back — audited: only reads — the vault is opened by exactly two Node CLIs and both only read it (`tools/importer/cli.mjs` reads `brands/*/social/*/queue/*`, `tools/specs/generate.mjs` reads `social/*/specs.md`); the only writes are `apps/frontend/.importer/<batch>.sql` and `src/lib/specs/platforms.ts`, both inside this repo; `src/` has no `node:fs` import at all, so the Worker cannot write a file even by accident
+- [ ] 5.4 Record the week's numbers: posts attempted, published, failed, uncertain, manual packs — **blocked on 5.1:** there is no week to record yet; the definition is fixed while waiting — attempts from `jobs.attempts`, published/failed/uncertain from `publish_results.state`, manual packs from `publish_results` rows with `platform = 'tiktok'` (a TikTok completion is written there by the pack, so the four numbers come from two tables)
+- [ ] 5.5 Decide, with those numbers, whether `tools/publish` is deleted or kept as an archive — **blocked on 5.4:** deciding without the week's numbers is a preference, not a decision; until then 5.2's freeze is the reversible half (a banner costs nothing to remove)
 
 ## 6. Close-out
 

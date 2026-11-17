@@ -9,20 +9,20 @@ tags: [postvyn, home]
 
 > [!info] This repo is a vault
 > Open the folder as a vault (vault root = repo root), so specs, journal and code share one graph.
-> `apps/frontend` is the project: M0–M5 are applied through their code tasks, M6 (media + cutover) is
-> next.
+> `apps/frontend` is the project: M0–M5 are applied through their code tasks, M6 (media + cutover) has
+> its code and its runbook in place and is waiting on a week of live posts.
 
 ## Now
 
 | | |
 |---|---|
-| **Milestone** | `M5 — Shipping` **29/31** applied (code tasks done; close-out 8.2/8.3 open) · `M6 — Cutover` **0/27** not started · `M4` **31/32** → [[004-PEP#3. Milestones & Phases\|PEP §3]] |
+| **Milestone** | `M5 — Shipping` **29/31** applied (code tasks done; close-out 8.2/8.3 open) · `M6 — Cutover` **5/27** (upload/serving/hygiene done, runbook written, `tools/publish` frozen; the cutover week is blocked on live posts) · `M4` **31/32** → [[004-PEP#3. Milestones & Phases\|PEP §3]] |
 | **Stories** | 73 tracked (58 user + 15 platform) · 49 Must · **23 ☑ · 28 ◐** → [[006-USER-STORIES]] |
-| **Next action** | make the first live publish per platform — M5's exit criterion, and what unblocks recording real X costs — then start M6 (media, runbook, cutover week) |
-| **Blocked on** | `wrangler login` before any deploy or remote migration · domain decision (OI-5) · Resend + Meta credentials → [[005-REQUIREMENTS]] |
-| **Open change** | `m0` **40/42** · `m1` **29/35** · `m2` **42/42** · `m3` **30/30** · `m4` **31/32** · `m5` **29/31** · `m6` **0/27** |
-| **Specified, not started** | `m6-media-and-cutover` **6 req / 14 scenarios / 27 tasks** — the only change not yet implemented; m3–m5 are applied but unarchived (archiving runs in order at m6 6.3) |
-| **Applied since** | `m4-approval-and-jobs` **31/32** (approvals, cron, kill switch) · `m5-publishing` **29/31** (channels, IG/Threads/X adapters, TikTok pack, failure email) · `m6` not started |
+| **Next action** | make the first live publish per platform — M5's exit criterion, and what unblocks recording real X costs — then the M6 cutover week (5.1–5.5) |
+| **Blocked on** | a real week of live posts before M6 5.1/5.4/5.5 can move · `wrangler login` before any deploy or remote migration · domain decision (OI-5) · Resend + Meta credentials → [[005-REQUIREMENTS]] |
+| **Open change** | `m0` **40/42** · `m1` **29/35** · `m2` **42/42** · `m3` **30/30** · `m4` **31/32** · `m5` **29/31** · `m6` **5/27** |
+| **Specified, not started** | `m6-media-and-cutover` — code is in and the runbook exists; what is left is the cutover week and close-out. m3–m5 are applied but unarchived (archiving runs in order at m6 6.3) |
+| **Applied since** | `m4-approval-and-jobs` **31/32** (approvals, cron, kill switch) · `m5-publishing` **29/31** (channels, IG/Threads/X adapters, TikTok pack, failure email) · `m6` **5/27** (R2 uploads, serving, purge, [[runbook]]) |
 
 ## Specs
 
@@ -33,8 +33,10 @@ tags: [postvyn, home]
 | [[004-PEP]] | who/when, phases M0–M6, risks R1–R13 | 0.1 |
 | [[005-REQUIREMENTS]] | what must exist before M0 | 0.1 + §13 |
 | [[006-USER-STORIES]] | the story tracker; what "done" means | 0.1 |
+| [[runbook]] | what to do at 11pm: connect, rotate, recover, re-import, restore | — |
 
-`002` is deliberately missing — no BRD.
+`002` is deliberately missing — no BRD. `runbook` is not a spec: it describes commands that exist in
+this repo, and its §6 lists the operations the app does not have yet.
 
 ## The shape of the thing
 
