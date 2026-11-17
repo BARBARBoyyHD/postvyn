@@ -1,27 +1,27 @@
 ## ADDED Requirements
 
-### Requirement: Signup creates an unverified account
+### Requirement: Signup creates a signed-in session
 
-An account SHALL be created by email and password, and MUST NOT be able to sign in until its email
-address is verified by a single-use link.
+An account SHALL be created by email and password, and signup MUST sign it in immediately: no
+verification email is sent and no verification step gates sign-in while mail delivery is deferred.
 
-#### Scenario: Signup sends a verification email
+#### Scenario: Signup signs the new account in
 
 - **WHEN** a visitor submits an unused email address and a password meeting the minimum length
-- **THEN** the account exists in `user` with `emailVerified` false
-- **AND** a verification email is handed to Resend
-- **AND** signing in with those credentials is refused until the link is opened
+- **THEN** the account exists in `user`
+- **AND** the response carries a session token and sets a session cookie
+- **AND** the account can call the authenticated API without a second sign-in
 
-#### Scenario: The verification link is single-use
+#### Scenario: No verification email is sent
 
-- **WHEN** a verification link is opened twice
-- **THEN** the first open marks the address verified
-- **AND** the second open fails without changing state
+- **WHEN** signup completes
+- **THEN** no email is handed to the mail port
+- **AND** signing in with the same credentials succeeds without a verification link
 
-#### Scenario: A duplicate signup does not reveal the existing account
+#### Scenario: A duplicate signup is refused
 
 - **WHEN** a visitor submits an email address that already has an account
-- **THEN** the response looks identical to a successful signup
+- **THEN** the request is refused with `422` and code `USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL`
 - **AND** the existing account is not modified
 
 ### Requirement: Sessions are long-lived and revocable
