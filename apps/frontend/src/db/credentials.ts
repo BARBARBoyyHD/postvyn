@@ -59,6 +59,38 @@ export function credentialStore(env: WorkerEnv) {
     return importSecretsKey(base64, version);
   }
 
+  /**
+   * Encrypt and (over)write one channel's secret. Shared by connect and renew, because both write the
+   * same row the same way and only one of them may touch `channels.status`.
+   */
+  async function writeSecret(
+    channelId: string,
+    credentials: Record<string, string>,
+    key: SecretsKey,
+  ): Promise<void> {
+    const secret = await encryptSecret(JSON.stringify(credentials), channelId, key);
+    const now = Date.now();
+
+    await db
+      .insert(s.channelCredentials)
+      .values({
+        channelId,
+        ciphertext: Buffer.from(secret.ciphertext),
+        iv: Buffer.from(secret.iv),
+        keyVersion: secret.keyVersion,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: s.channelCredentials.channelId,
+        set: {
+          ciphertext: Buffer.from(secret.ciphertext),
+          iv: Buffer.from(secret.iv),
+          keyVersion: secret.keyVersion,
+          updatedAt: now,
+        },
+      });
+  }
+
   return {
     /**
      * Connect an account: create the channel if it is new, and (re)write its credentials either way.
@@ -131,28 +163,30 @@ export function credentialStore(env: WorkerEnv) {
         });
       }
 
-      const secret = await encryptSecret(JSON.stringify(input.credentials), channelId, key);
-
-      await db
-        .insert(s.channelCredentials)
-        .values({
-          channelId,
-          ciphertext: Buffer.from(secret.ciphertext),
-          iv: Buffer.from(secret.iv),
-          keyVersion: secret.keyVersion,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: s.channelCredentials.channelId,
-          set: {
-            ciphertext: Buffer.from(secret.ciphertext),
-            iv: Buffer.from(secret.iv),
-            keyVersion: secret.keyVersion,
-            updatedAt: now,
-          },
-        });
+      await writeSecret(channelId, input.credentials, key);
 
       return { ok: true, channelId, created: !existing };
+    },
+
+    /**
+     * Replace a channel's secret in place — a token refresh, which is not a reconnect.
+     *
+     * Deliberately does not touch `channels.status`: the operator's switch (or a `reauth_required`
+     * flag) is not a refresh's business. Returns false when the channel is not in this workspace, so
+     * the caller can report a row it could not touch instead of assuming success.
+     */
+    async renew(
+      ctx: WorkspaceContext,
+      channelId: string,
+      credentials: Record<string, string>,
+    ): Promise<boolean> {
+      requireCtx(ctx);
+
+      const channel = await scopedChannel(ctx, channelId);
+      if (!channel) return false;
+
+      await writeSecret(channelId, credentials, await currentKey());
+      return true;
     },
 
     /**

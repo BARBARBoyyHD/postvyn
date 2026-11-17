@@ -15,17 +15,17 @@
 
 ## 3. Threads adapter
 
-- [ ] 3.1 Container create → poll → publish → verify, with the 250-post/24h ceiling surfaced
-- [ ] 3.2 Text and image variants; video routed through the same container flow
-- [ ] 3.3 Fixtures for expired token, rejected container and rate limit
+- [x] 3.1 Container create → poll → publish → verify, with the 250-post/24h ceiling surfaced — `src/publishers/threads.ts`: create → poll `status` → `threads_publish` → read-back; `THREADS_POSTS_PER_24H = 250` (cited to `docs/001-PRD.md` FR-08) is shown in `preview().notes`, surfaced and not enforced per ITA §6; "creates, polls, publishes, then takes the permalink from the read-back" and "shows the 250-post ceiling…" in `test/publish-threads.test.ts`
+- [x] 3.2 Text and image variants; video routed through the same container flow — `containerParams()` sets `media_type` TEXT / IMAGE / VIDEO with `image_url` or `video_url`; one media item per post, and more is refused as `media_unsupported` rather than silently dropped (Threads carousel is not wired)
+- [x] 3.3 Fixtures for expired token, rejected container and rate limit — `test/fixtures/threads/{expired-token,rejected-container,rate-limit,text-published,read-back-mismatch}.json` read through `test/support/fixture-transport.ts`; expired token (190/463) is `reauth_required` + channel flipped + audit row, rate limit (613) stays a retryable `failed`, rejected container quotes Meta's `error_message` verbatim
 
 ## 4. Instagram adapter
 
-- [ ] 4.1 `REELS`, `IMAGE` and `CAROUSEL` handled as separate shapes, each with its own media requirements
-- [ ] 4.2 Media resolved to public URLs — Meta fetches the bytes itself
-- [ ] 4.3 Container creation parks the job; polling resumes on a later tick
-- [ ] 4.4 Verify by reading the published media back and storing its permalink
-- [ ] 4.5 Monthly refresh of the long-lived token, with failure flipping the channel to `reauth_required`
+- [x] 4.1 `REELS`, `IMAGE` and `CAROUSEL` handled as separate shapes, each with its own media requirements — `src/publishers/instagram-shapes.ts`: count and kind per shape, carousel ceiling reuses the spec engine's `PLATFORM_RULES.instagram.mediaMax` instead of a second copy; shape named in `preview().notes`, refusals are `media_required` / `too_many_media` / `media_unsupported`
+- [x] 4.2 Media resolved to public URLs — Meta fetches the bytes itself — `src/db/media.ts`: `mediaIds` → `R2_PUBLIC_BASE` + R2 key, in variant order; refuses `base_missing` (names the variable), `no_object_key` (names the row, old vault path), `not_postable`, `media_missing` before the adapter runs; "media has to resolve to a public URL" in `test/publish-instagram.test.ts`
+- [x] 4.3 Container creation parks the job; polling resumes on a later tick — `jobs.park` stores the container id in the payload, `jobs.resumeParked` does `awaiting_platform → queued` so the resume goes back through `claim` (lease, attempts, kill switch), and `publishVariant` resumes via `verify()` instead of creating a second container; "polls on the next tick…" and "creates one container, not one per tick" in `test/publish-instagram.test.ts`
+- [x] 4.4 Verify by reading the published media back and storing its permalink — `readBackAnswer()` in `src/publishers/meta.ts` is the only path to `published`: a failed read is `uncertain`, a different id is `uncertain`; "a read-back that disagrees is uncertain, never published" in `test/publish-threads.test.ts`
+- [x] 4.5 Monthly refresh of the long-lived token, with failure flipping the channel to `reauth_required` — `src/publishers/instagram-token.ts` + `src/db/token-refresh.ts`, run from `runScheduled` every tick and gated by `INSTAGRAM_REFRESH_AFTER_MS` (25 of the token's 60 days); a refusal is `markReauth` + a `channel.token_refresh_failed` audit row; `test/token-refresh.test.ts` covers fresh/refreshed/refused
 
 ## 5. X adapter
 

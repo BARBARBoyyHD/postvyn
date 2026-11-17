@@ -18,7 +18,6 @@ import { resolveContext } from "@/auth/context";
 import { approvals } from "@/db/approvals";
 import { repository } from "@/db/repository";
 import { previewVariant, publishNow, type PreviewOutcome } from "@/db/tick";
-import { notConnectedPublisher } from "@/publishers/port";
 import { fail, ok, toErrorResponse } from "@/lib/api";
 import { getBindings } from "@/lib/bindings";
 import type { WorkspaceContext } from "@/lib/context";
@@ -64,7 +63,7 @@ export async function POST(request: Request, params: { params: Promise<{ id: str
     if (body.data.dryRun === true) {
       const previews: PreviewOutcome[] = [];
       for (const variant of detail.variants) {
-        previews.push(await previewVariant(env, variant.id, notConnectedPublisher()));
+        previews.push(await previewVariant(env, variant.id));
       }
       return ok({ postId: id, dryRun: true, previews });
     }
@@ -115,7 +114,7 @@ export async function POST(request: Request, params: { params: Promise<{ id: str
       return fail(409, "approval_required", { failures: approvalErrors });
     }
 
-    const report = await publishNow(env, id, notConnectedPublisher(), now);
+    const report = await publishNow(env, id, { now });
     if (!report) return fail(404, "not_found");
 
     return ok(report);

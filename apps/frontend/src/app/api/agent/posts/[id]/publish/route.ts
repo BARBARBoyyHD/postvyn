@@ -12,7 +12,6 @@
 import { resolveContext } from "@/auth/context";
 import { approvals } from "@/db/approvals";
 import { publishNow } from "@/db/tick";
-import { notConnectedPublisher } from "@/publishers/port";
 import { fail, ok, toErrorResponse } from "@/lib/api";
 import { requireAgent } from "@/lib/agent-guard";
 import { repository, type Repository } from "@/db/repository";
@@ -72,7 +71,7 @@ async function publish(
       });
     }
 
-    const report = await publishNow(env, id, notConnectedPublisher());
+    const report = await publishNow(env, id);
     if (!report) return fail(404, "not_found");
     return ok(report);
   } catch (error) {

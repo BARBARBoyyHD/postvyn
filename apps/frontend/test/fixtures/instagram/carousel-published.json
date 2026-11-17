@@ -1,0 +1,16 @@
+{
+  "replies": [
+    { "status": 200, "body": { "id": "container-carousel-1" } },
+    { "status": 200, "body": { "id": "container-carousel-2" } },
+    { "status": 200, "body": { "id": "container-parent-1" } },
+    { "status": 200, "body": { "id": "container-parent-1", "status_code": "FINISHED" } },
+    { "status": 200, "body": { "id": "17900000000000002" } },
+    {
+      "status": 200,
+      "body": {
+        "id": "17900000000000002",
+        "permalink": "https://www.instagram.com/p/CzAbCdEfGhI/"
+      }
+    }
+  ]
+}

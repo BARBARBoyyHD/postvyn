@@ -40,7 +40,7 @@ function stub(outcome: PublishResult | ((input: PublishInput) => PublishResult))
   return {
     platform: "x",
     async preview() {
-      return { calls: [], estimatedCostUsd: null };
+      return { calls: [], estimatedCostUsd: null, notes: [] };
     },
     async publish(input) {
       return typeof outcome === "function" ? outcome(input) : outcome;

@@ -26,9 +26,9 @@
 
 ## 4. Cron entry
 
-- [ ] 4.1 Custom Worker entry exporting `fetch` plus `scheduled`, wired into `wrangler.jsonc` `main` — **descoped** — the upload button replaces the cron path for now; a scheduled tick returns with M5/M6
-- [ ] 4.2 Restore `triggers.crons` in the same commit as the `scheduled` export — never one without the other — **descoped** with 4.1: no `scheduled` export is declared, so no trigger is declared either (the M0 rule)
-- [ ] 4.3 The scheduled handler authenticates nothing and trusts nothing outside its own binding — **descoped** with 4.1: `runTick` exists and is tested, it simply has no automatic caller yet
+- [x] 4.1 Custom Worker entry exporting `fetch` plus `scheduled`, wired into `wrangler.jsonc` `main` — `src/worker.ts` re-exports vinext's fetch handler and calls `runScheduled`; `wrangler.jsonc` `main` is now `src/worker.ts`; `pnpm build:vinext` emits `{fetch, scheduled}` in the Worker entry (checked in `dist/server/_next/static/worker-entry-*.js`)
+- [x] 4.2 Restore `triggers.crons` in the same commit as the `scheduled` export — never one without the other — `wrangler.jsonc` `triggers.crons: ["*/5 * * * *"]`, the cadence m4 chose for container polling (m4 design decision 4); the same edit removed the note that explained their absence
+- [x] 4.3 The scheduled handler authenticates nothing and trusts nothing outside its own binding — one why-comment in `src/worker.ts`: Cloudflare invokes it, so it cannot be reached from outside and needs no secret; `CRON_SECRET` guards only the HTTP door (`POST /api/internal/tick`, which calls the same `runScheduled`). No-op proven in `test/cron.test.ts`
 - [x] 4.4 `POST /api/internal/tick` for manual runs, guarded by `CRON_SECRET`, never by a session
 - [x] 4.5 Confirm a tick with no due work is a no-op and logs nothing noisy — test landed in 406ca54: "a tick with no due work is a no-op that says nothing"
 

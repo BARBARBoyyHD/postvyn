@@ -2,7 +2,10 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   // The WORKER's name. Not the database's — that is `database_name` below.
   "name": "postvyn",
-  "main": "vinext/server/fetch-handler",
+  // A custom entry (src/worker.ts) rather than vinext's bare fetch handler: the cron needs a
+  // `scheduled` export, and a trigger without one fails on every invocation. The entry re-exports
+  // vinext's fetch handler, so the app itself is unchanged.
+  "main": "src/worker.ts",
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
 
@@ -37,15 +40,18 @@
   "vars": {
     "PUBLISHING_ENABLED": "false",
     "R2_PUBLIC_BASE": ""
+  },
+
+  // Every five minutes: the cadence m4 chose for container polling — a Worker cannot sleep, so
+  // "wait for Meta" means "look again on the next tick" (m4 design decision 4). ~15 posts a week
+  // makes the frequency free, and a missed tick is harmless because the next one claims the same rows.
+  "triggers": {
+    "crons": ["*/5 * * * *"]
   }
 
-  // Deliberately absent, both with a reason:
+  // Deliberately absent, with a reason:
   //
   // `images` — vinext init adds an IMAGES binding because its template optimises images. This project
   // does no transformation (no sharp, no resvg: neither loads in workerd). A binding nothing calls is
   // pure cost.
-  //
-  // `triggers.crons` — the Worker entry is vinext's fetch handler, which exports no `scheduled`. A
-  // cron trigger without one fails on every invocation, which is worse than no trigger. Trigger and
-  // handler land together in M4, and M0 has no jobs to claim.
 }

@@ -97,7 +97,7 @@ function countingPublisher(): { publisher: Publisher; calls: () => number } {
     publisher: {
       platform: "x",
       async preview() {
-        return { calls: [], estimatedCostUsd: null };
+        return { calls: [], estimatedCostUsd: null, notes: [] };
       },
       async publish() {
         calls += 1;

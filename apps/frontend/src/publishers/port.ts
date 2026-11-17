@@ -20,6 +20,14 @@
 import type { Platform } from "@/lib/specs/platforms";
 import { recordingTransport, type HttpCall, type Transport } from "./transport";
 
+/** One media item, already resolved to a URL the platform can fetch without credentials. */
+export interface PublishMedia {
+  /** The media row id, so a refusal can name the row the operator has to fix. */
+  id: string;
+  url: string;
+  kind: "image" | "video";
+}
+
 export interface PublishInput {
   variantId: string;
   platform: Platform;
@@ -29,10 +37,11 @@ export interface PublishInput {
   caption: string;
   hashtags: string[];
   /**
-   * Media ids in publish order. M6 turns these into public URLs; an adapter that needs bytes tells
-   * the caller so rather than inventing a path.
+   * Media in publish order, resolved by `src/db/media.ts` (carousel sequence matters). An adapter
+   * never builds a URL: Meta fetches the bytes itself, so a guessed path is a post that fails
+   * somewhere the operator cannot see.
    */
-  mediaIds: string[];
+  media: PublishMedia[];
   /**
    * Decrypted credentials, in process only. Handed in rather than fetched by the adapter so
    * `src/publishers` never holds a database binding.
@@ -41,7 +50,11 @@ export interface PublishInput {
 }
 
 export interface PlatformError {
-  /** The platform's own code, verbatim. */
+  /**
+   * The platform's own code, verbatim. A refusal made by an adapter *before* the first call carries
+   * a lower-case code (`media_required`, `media_unsupported`) so it can be told apart from an answer
+   * the platform actually gave.
+   */
   code: string;
   /** The platform's own message, verbatim — never paraphrased (spec: publishers §3). */
   message: string;
@@ -49,9 +62,20 @@ export interface PlatformError {
 
 export type PublishResult =
   | { status: "published"; platformPostId: string; permalink: string | null; raw?: unknown }
-  | { status: "awaiting_platform"; detail: string; resume: { afterMs: number } }
+  | {
+      status: "awaiting_platform";
+      detail: string;
+      /** `containerId` is what the next tick polls; without it a resume would create a second post. */
+      resume: { afterMs: number; containerId?: string };
+    }
   | { status: "uncertain"; detail: string; platformError?: PlatformError }
   | { status: "failed"; platformError: PlatformError }
+  /**
+   * The platform refused the *credential*, not the content: expired or revoked. Retrying with the
+   * same token cannot work, so the caller flips the channel to `reauth_required` and stops
+   * (spec: platform-connections, "An expired token flips the channel").
+   */
+  | { status: "reauth_required"; platformError: PlatformError }
   | { status: "not_connected"; reason: string };
 
 export interface Preview {
@@ -59,6 +83,11 @@ export interface Preview {
   calls: HttpCall[];
   /** Null when the platform does not charge per post (Instagram and Threads are free). */
   estimatedCostUsd: number | null;
+  /**
+   * What the operator should know before sending — platform ceilings an adapter can surface but not
+   * enforce. Empty when there is nothing to say.
+   */
+  notes: string[];
 }
 
 export interface Publisher {
@@ -66,7 +95,13 @@ export interface Publisher {
   readonly platform: Platform | "none";
   preview(input: PublishInput): Promise<Preview>;
   publish(input: PublishInput): Promise<PublishResult>;
-  verify(result: PublishResult): Promise<PublishResult>;
+  /**
+   * Reads the post back from the platform — or resumes a container it has not finished with.
+   *
+   * Takes the input as well as the result because a read-back happens in a later request, where the
+   * adapter holds nothing: a token is not something an adapter may keep between invocations.
+   */
+  verify(result: PublishResult, input: PublishInput): Promise<PublishResult>;
 }
 
 /**
@@ -75,10 +110,13 @@ export interface Publisher {
  * Adapters are written as `(transport) => …, await transport.send(call)…`; this is the wrapper that
  * makes the dry run the same function as the real publish.
  */
-export async function previewFlow(run: (transport: Transport) => Promise<unknown>): Promise<Preview> {
+export async function previewFlow(
+  run: (transport: Transport) => Promise<unknown>,
+  notes: string[] = [],
+): Promise<Preview> {
   const { transport, calls } = recordingTransport();
   await run(transport);
-  return { calls, estimatedCostUsd: null };
+  return { calls, estimatedCostUsd: null, notes };
 }
 
 /**
@@ -91,7 +129,7 @@ export function notConnectedPublisher(): Publisher {
   return {
     platform: "none",
     async preview() {
-      return { calls: [], estimatedCostUsd: null };
+      return { calls: [], estimatedCostUsd: null, notes: [] };
     },
     async publish() {
       return { status: "not_connected", reason: "no platform adapter is configured yet (M5)" };

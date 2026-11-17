@@ -1,0 +1,15 @@
+{
+  "replies": [
+    {
+      "status": 429,
+      "body": {
+        "error": {
+          "message": "Calls to this api have exceeded the rate limit.",
+          "type": "OAuthException",
+          "code": 613,
+          "fbtrace_id": "B2mQ8rDs0Lk"
+        }
+      }
+    }
+  ]
+}

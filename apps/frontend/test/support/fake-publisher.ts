@@ -85,8 +85,7 @@ export function fakePublisher(options: FakePublisherOptions): Publisher {
 export function recordingFetch(answers: { status: number; body: unknown }[]): {
   fetchImpl: typeof fetch;
   calls: { url: string; method: string; body: string | null }[];
-} {
-  const calls: { url: string; method: string; body: string | null }[] = [];
+} {  const calls: { url: string; method: string; body: string | null }[] = [];
   let index = 0;
 
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {

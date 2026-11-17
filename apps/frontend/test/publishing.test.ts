@@ -89,7 +89,7 @@ function input(): PublishInput {
     accountRef: ACCOUNT_REF,
     caption: "the caption",
     hashtags: ["#one"],
-    mediaIds: [],
+    media: [],
     credentials: { accessToken: "test-token" },
   };
 }
@@ -136,19 +136,20 @@ describe("a dry run describes the publish and touches nothing", () => {
   });
 
   it("says there is no adapter rather than listing zero calls", async () => {
-    const outcome = await previewVariant(testEnv, VARIANT, notConnectedPublisher());
+    const outcome = await previewVariant(testEnv, VARIANT, {
+      publisher: notConnectedPublisher(),
+    });
 
     expect(outcome).toMatchObject({ ok: false, variantId: VARIANT, reason: "not_connected" });
     if (outcome.ok) return;
     expect(outcome.detail).toContain("M5");
   });
 
-  it("a dry run of the variant answers through the same rows a publish would", async () => {    const recorded = recordingFetch(SUCCESS_ANSWERS);
-    const outcome = await previewVariant(
-      testEnv,
-      VARIANT,
-      fakePublisher({ platform: "threads", fetchImpl: recorded.fetchImpl }),
-    );
+  it("a dry run of the variant answers through the same rows a publish would", async () => {
+    const recorded = recordingFetch(SUCCESS_ANSWERS);
+    const outcome = await previewVariant(testEnv, VARIANT, {
+      publisher: fakePublisher({ platform: "threads", fetchImpl: recorded.fetchImpl }),
+    });
 
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
@@ -231,11 +232,9 @@ describe("a platform error is stored in the platform's words", () => {
       },
     ]);
 
-    const outcome = await publishVariant(
-      testEnv,
-      VARIANT,
-      fakePublisher({ platform: "threads", fetchImpl: recorded.fetchImpl }),
-    );
+    const outcome = await publishVariant(testEnv, VARIANT, {
+      publisher: fakePublisher({ platform: "threads", fetchImpl: recorded.fetchImpl }),
+    });
 
     expect(outcome.verdict).toBe("failed");
     expect(outcome.platformError).toEqual({
@@ -264,11 +263,9 @@ describe("published means read back", () => {
 
   it("stores the platform's permalink only after the read-back agrees", async () => {
     const recorded = recordingFetch(SUCCESS_ANSWERS);
-    const outcome = await publishVariant(
-      testEnv,
-      VARIANT,
-      fakePublisher({ platform: "threads", fetchImpl: recorded.fetchImpl }),
-    );
+    const outcome = await publishVariant(testEnv, VARIANT, {
+      publisher: fakePublisher({ platform: "threads", fetchImpl: recorded.fetchImpl }),
+    });
 
     expect(outcome.verdict).toBe("published");
     expect(outcome.url).toBe("https://threads.test/p/th_1");
@@ -325,10 +322,12 @@ describe("a channel that cannot receive the post is not called", () => {
     const recorded = recordingFetch(SUCCESS_ANSWERS);
     const publisher = fakePublisher({ platform: "threads", fetchImpl: recorded.fetchImpl });
     const outcome = await publishVariant(testEnv, VARIANT, {
-      ...publisher,
-      publish: async (payload) => {
-        calls += 1;
-        return publisher.publish(payload);
+      publisher: {
+        ...publisher,
+        publish: async (payload) => {
+          calls += 1;
+          return publisher.publish(payload);
+        },
       },
     });
 

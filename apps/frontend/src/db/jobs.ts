@@ -142,20 +142,44 @@ export function jobs(env: Bindings) {
       void detail;
     },
 
-    /** Park until the platform finishes. Not a retry: the attempt that parked it keeps its count. */
-    async park(id: string, reason: string, resumeAfterMs: number) {
+    /**
+     * Park until the platform finishes. Not a retry: the attempt that parked it keeps its count.
+     *
+     * The container id rides in the payload, so the next tick polls the post it already created
+     * instead of creating a second one — a duplicate post cannot be undone from this side.
+     */
+    async park(
+      id: string,
+      options: { reason: string; resumeAfterMs: number; containerId?: string },
+    ) {
       const now = Date.now();
+      const containerId = options.containerId ?? null;
+
       await db
         .update(s.jobs)
         .set({
           state: "awaiting_platform",
           leaseUntil: null,
-          lastError: reason,
-          runAfter: now + resumeAfterMs,
+          lastError: options.reason,
+          runAfter: now + options.resumeAfterMs,
           attemptFinishedAt: now,
           updatedAt: now,
+          payload: sql`case when ${containerId} is null then ${s.jobs.payload}
+            else json_set(${s.jobs.payload}, '$.containerId', ${containerId}) end`,
         })
         .where(eq(s.jobs.id, id));
+    },
+
+    /**
+     * `awaiting_platform` → `queued` once the platform's window has passed (US-032: a parked job
+     * never resumed). It goes back through `claim` rather than being published here, so the lease,
+     * the attempt count and the kill switch all apply to a resume exactly as they do to a first try.
+     */
+    async resumeParked(now = Date.now()) {
+      await db
+        .update(s.jobs)
+        .set({ state: "queued", updatedAt: now })
+        .where(and(eq(s.jobs.state, "awaiting_platform"), lte(s.jobs.runAfter, now)));
     },
 
     /**

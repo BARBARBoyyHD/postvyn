@@ -2,14 +2,11 @@
  * `POST /api/internal/tick` — run the queue by hand.
  *
  * The cron handler and this route call the same function, so "it worked when I ran it" and "it worked at
- * 09:00" are the same code path. Guarded by `CRON_SECRET` as a bearer token, never by a session: a
- * session-authenticated cron is a cron somebody can trigger from a browser tab.
- *
- * Under M4 the only publisher available is the stand-in that says "not connected", so a tick here parks
- * jobs rather than posting anything. That is the honest state of the system, not a bug.
+ * 09:05" are the same code path. Guarded by `CRON_SECRET` as a bearer token, never by a session: a
+ * session-authenticated cron is a cron somebody can trigger from a browser tab. The scheduled path
+ * behind Cloudflare's trigger needs no secret — it cannot be reached from outside.
  */
-import { runTick } from "@/db/tick";
-import { notConnectedPublisher } from "@/publishers/port";
+import { runScheduled } from "@/db/scheduled";
 import { fail, ok, toErrorResponse } from "@/lib/api";
 import { getBindings } from "@/lib/bindings";
 import type { WorkerEnv } from "@/lib/env";
@@ -28,10 +25,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const report = await runTick(env, {
-      publisher: notConnectedPublisher(),
-      globalEnabled: env.PUBLISHING_ENABLED === "true",
-    });
+    const report = await runScheduled(env);
     return ok(report);
   } catch (error) {
     return toErrorResponse(error);
