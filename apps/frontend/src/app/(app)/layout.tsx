@@ -72,6 +72,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Link href="/intake" className="text-zavron-muted transition-colors hover:text-zavron-ink">
               intake
             </Link>
+            <Link
+              href="/channels"
+              className="text-zavron-muted transition-colors hover:text-zavron-ink"
+            >
+              channels
+            </Link>
             <Link href="/health" className="text-zavron-muted transition-colors hover:text-zavron-ink">
               health
             </Link>

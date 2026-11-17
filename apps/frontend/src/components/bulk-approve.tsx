@@ -24,6 +24,8 @@ export interface BulkApproveItem {
   platform: string;
   captionLength: number;
   specState: string;
+  /** The guideline sentence for a manual platform (TikTok); null for the three that publish here. */
+  note: string | null;
   /** Computed from the content on screen; the server compares it before approving. */
   hash: string;
 }
@@ -150,6 +152,14 @@ export function BulkApprove({ items }: { items: BulkApproveItem[] }) {
                     <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.14em] text-zavron-muted">
                       {item.platform} · {item.captionLength} chars · spec {item.specState}
                     </span>
+                    {item.note ? (
+                      <span
+                        title={item.note}
+                        className="mt-0.5 block line-clamp-1 font-mono text-[10px] leading-relaxed text-zavron-muted/80"
+                      >
+                        {item.note}
+                      </span>
+                    ) : null}
                   </label>
                   <Link
                     href={`/posts/${item.postId}`}

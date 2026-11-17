@@ -61,13 +61,17 @@ export default async function BoardPage({
     limit: 60,
   });
 
-  const variantsByPost = new Map<string, { platform: string; specState: string; captionLength: number }[]>();
+  const variantsByPost = new Map<
+    string,
+    { platform: string; specState: string; captionLength: number; note: string | null }[]
+  >();
   for (const variant of board.variants) {
     const list = variantsByPost.get(variant.postId) ?? [];
     list.push({
       platform: variant.platform,
       specState: variant.specState,
       captionLength: Number(variant.captionLength),
+      note: variant.note,
     });
     variantsByPost.set(variant.postId, list);
   }
@@ -154,6 +158,8 @@ export default async function BoardPage({
               <ul className="space-y-2">
                 {posts.map((post) => {
                   const variants = variantsByPost.get(post.id) ?? [];
+                  // One sentence covers every TikTok variant on the card, so it is shown once.
+                  const manualNote = variants.find((variant) => variant.note)?.note ?? null;
                   return (
                     <li key={post.id}>
                       <Link
@@ -181,6 +187,14 @@ export default async function BoardPage({
                             </span>
                           ))}
                         </div>
+                        {manualNote ? (
+                          <p
+                            title={manualNote}
+                            className="mt-1.5 line-clamp-1 font-mono text-[10px] leading-relaxed text-zavron-muted/80"
+                          >
+                            {manualNote}
+                          </p>
+                        ) : null}
                       </Link>
                     </li>
                   );

@@ -37,6 +37,7 @@ export default async function ReviewPage() {
       platform: variant.platform,
       captionLength: (variant.caption ?? "").length,
       specState: variant.specState,
+      note: variant.note,
       // The content on screen, so an edit between render and submit becomes "re-approve", not a
       // silent approval of something the operator never saw.
       hash: await variantHash(variant),
