@@ -16,13 +16,13 @@ tags: [postvyn, home]
 
 | | |
 |---|---|
-| **Milestone** | `M5 — Shipping` **30/31** applied (code tasks done; close-out 8.2 waits on the first live X post) · `M6 — Cutover` **23/27** (upload/serving/hygiene, runbook, `tools/publish` frozen, lessons vaulted; 5.1/5.4/5.5 blocked on live posts, 6.3 validate+archive open) · `M4` **31/32** (7.3 archiving folds into m6 6.3) → [[004-PEP#3. Milestones & Phases\|PEP §3]] |
+| **Milestone** | `M5 — Shipping` **30/31** applied (code tasks done; close-out 8.2 waits on the first live X post) · `M6 — Cutover` **24/27** (upload/serving/hygiene, runbook, `tools/publish` frozen, lessons vaulted, m2–m4 archived; 5.1/5.4/5.5 blocked on live posts) · `M4` **32/32** archived → [[004-PEP#3. Milestones & Phases\|PEP §3]] |
 | **Stories** | 73 tracked (58 user + 15 platform) · 49 Must · **27 ☑ · 28 ◐** → [[006-USER-STORIES]] |
-| **Next action** | make the first live publish per platform — M5's exit criterion, and what unblocks recording real X costs — then the M6 cutover week (5.1–5.5), then `openspec validate` + archive in order (m6 6.3) |
+| **Next action** | make the first live publish per platform — M5's exit criterion, and what unblocks recording real X costs — then the M6 cutover week (5.1–5.5) and 5.5's keep-or-delete call on `tools/publish` |
 | **Blocked on** | a real week of live posts before M6 5.1/5.4/5.5 can move · `wrangler login` before any deploy, remote migration or an unattended cron (US-029) · first GitHub push (m0 6.5) · domain decision (OI-5) · Resend + Meta credentials → [[005-REQUIREMENTS]]. The only open code tasks are three m1 partials: 3.2 Turnstile production assertion, 6.4 per-role endpoint tests, 7.1 reset/revoke-all audit |
-| **Open change** | `m0` **40/42** · `m1` **29/35** · `m2` **42/42** · `m3` **30/30** · `m4` **31/32** · `m5` **30/31** · `m6` **23/27** |
-| **Specified, not started** | `m6-media-and-cutover` — code is in and the runbook exists; what is left is the cutover week and close-out. m3–m5 are applied but unarchived (archiving runs in order at m6 6.3) |
-| **Applied since** | `m4-approval-and-jobs` **31/32** (approvals, cron, kill switch) · `m5-publishing` **30/31** (channels, IG/Threads/X adapters, TikTok pack, failure email) · `m6` **23/27** (R2 uploads, serving, purge, [[runbook]], lessons vaulted) |
+| **Open change** | `m0` **40/42** · `m1` **29/35** · `m5` **30/31** · `m6` **24/27** |
+| **Specified, not started** | `m6-media-and-cutover` — code is in and the runbook exists; what is left is the cutover week. `m2`/`m3`/`m4` archived 2026-11-17; `m5` stays open until its first live X post (8.2) |
+| **Applied since** | `m2-vault-import-and-board` **42/42**, `m3-authoring` **30/30**, `m4-approval-and-jobs` **32/32** — archived 2026-11-17 (importer + board, composer + spec engine, approvals + cron + kill switch) · `m5-publishing` **30/31** (channels, IG/Threads/X adapters, TikTok pack, failure email) · `m6` **24/27** (R2 uploads, serving, purge, [[runbook]], lessons vaulted) |
 
 ## Specs
 
