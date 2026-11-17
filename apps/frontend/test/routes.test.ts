@@ -19,6 +19,8 @@ import { GET as getPost } from "@/app/api/v1/posts/[id]/route";
 import { GET as getTiktokPack } from "@/app/api/v1/variants/[id]/tiktok-pack/route";
 import { POST as postTiktokComplete } from "@/app/api/v1/variants/[id]/tiktok-complete/route";
 import { POST as postBatchApprove } from "@/app/api/v1/variants/approve/route";
+import { POST as postMediaRecord } from "@/app/api/v1/media/[id]/record/route";
+import { POST as postMediaMint } from "@/app/api/v1/media/route";
 
 type Handler = (request: Request, context: { params: Promise<Record<string, string>> }) => Promise<Response>;
 
@@ -80,6 +82,13 @@ const PROTECTED: { name: string; handler: Handler; method: string; path: string 
     handler: deleteChannel as Handler,
     method: "DELETE",
     path: "/api/v1/channels?id=00000000-0000-4000-8000-0000000000c1",
+  },
+  { name: "POST /api/v1/media", handler: postMediaMint as Handler, method: "POST", path: "/api/v1/media" },
+  {
+    name: "POST /api/v1/media/:id/record",
+    handler: postMediaRecord as Handler,
+    method: "POST",
+    path: "/api/v1/media/upl_0000000000ab/record",
   },
 ];
 

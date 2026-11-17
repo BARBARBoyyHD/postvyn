@@ -117,7 +117,16 @@ export const media = sqliteTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     hash: text("hash").notNull(),
+    /**
+     * The value the row was written with: an R2 key for anything uploaded, a vault path for media
+     * imported from v0.1. Kept as-is — an import dispute is worse than an ugly field.
+     */
     key: text("key").notNull(),
+    /**
+     * The R2 key for a row whose `key` is still a vault path — set when that media is uploaded again
+     * (m6 2.4). Null for every row uploaded by this app; `objectKey()` reads both.
+     */
+    r2Key: text("r2_key"),
     mime: text("mime").notNull(),
     bytes: integer("bytes").notNull(),
     width: integer("width"),

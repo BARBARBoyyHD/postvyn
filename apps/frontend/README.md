@@ -77,6 +77,10 @@ pnpm exec wrangler secret put BETTER_AUTH_SECRET
 pnpm exec wrangler secret put TOKEN_ENCRYPTION_KEY
 pnpm exec wrangler secret put RESEND_API_KEY
 pnpm exec wrangler secret put CRON_SECRET
+# uploads are signed client-side to R2's S3 endpoint, so the Worker needs an S3 key (M6)
+pnpm exec wrangler secret put R2_ACCOUNT_ID
+pnpm exec wrangler secret put R2_ACCESS_KEY_ID
+pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY
 ```
 
 **`TOKEN_ENCRYPTION_KEY` is not a normal secret.** It decrypts every stored platform token. Losing it

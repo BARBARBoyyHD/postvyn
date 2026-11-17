@@ -9,7 +9,11 @@
  * that touches `fetch`.
  */
 export interface HttpCall {
-  method: "GET" | "POST" | "DELETE";
+  /**
+   * `HEAD` is the reachability probe (`media-probe.ts`): it asks "would a platform get these bytes"
+   * without transferring them, which is the only cheap way to check a public URL before a post.
+   */
+  method: "GET" | "POST" | "HEAD" | "DELETE";
   url: string;
   /** Header **names** are shown in a preview; values are not, because a token lives in some of them. */
   headers?: Record<string, string>;

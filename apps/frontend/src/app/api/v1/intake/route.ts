@@ -1,9 +1,10 @@
 /**
- * `POST /api/v1/intake` and `POST /api/v1/media` — the human door.
+ * `POST /api/v1/intake` — the human door, second half: the draft.
  *
- * Same modules as the agent door, different authentication. Keeping them separate routes rather than one
- * route with two auth modes means a mistake in cookie handling cannot open the token path, and vice
- * versa.
+ * Assets arrive through `POST /api/v1/media` (mint a URL) and `POST /api/v1/media/:id/record` since M6,
+ * so this route only turns a caption plus media ids into a post. Same modules as the agent door,
+ * different authentication: keeping them separate rather than one route with two auth modes means a
+ * mistake in cookie handling cannot open the token path, and vice versa.
  */
 import { resolveContext } from "@/auth/context";
 import { intake } from "@/db/intake";

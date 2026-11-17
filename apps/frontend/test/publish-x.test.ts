@@ -70,7 +70,7 @@ function input(overrides: Partial<PublishInput> = {}): PublishInput {
 }
 
 function video(): PublishMedia {
-  return { id: "med-video", url: "https://media.test/video.mp4", kind: "video" };
+  return { id: "med-video", key: "media/ws/video.mp4", url: "https://media.test/video.mp4", kind: "video" };
 }
 
 function fromFixture(fixture: RecordedReply, creditsConfigured = true) {

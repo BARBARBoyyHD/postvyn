@@ -30,7 +30,9 @@ import { credentialStore } from "./credentials";
 import { jobs, LEASE_MS } from "./jobs";
 import { mediaResolver } from "./media";
 import { specGate } from "./spec-gate";
+import { probeMedia } from "@/publishers/media-probe";
 import { publisherFor } from "@/publishers/registry";
+import { liveTransport, type Transport } from "@/publishers/transport";
 import {
   isCostProblem,
   type PlatformError,
@@ -77,6 +79,11 @@ export interface VariantOutcome {
  */
 export interface PublishOptions {
   publisher?: Publisher;
+  /**
+   * Where the reachability probe sends its HEAD, and where a test injects a recorder. Production
+   * passes nothing: `liveTransport()` is the network the adapters already use.
+   */
+  transport?: Transport;
   resume?: { containerId: string };
   now?: number;
 }
@@ -259,6 +266,18 @@ export async function publishVariant(
       });
     }
     return { variantId, platform: access.platform, verdict: access.verdict, detail: access.detail };
+  }
+
+  // The URL a platform will fetch has to answer without credentials before we spend a call on it: a
+  // 404 at Instagram is a failed post whose error names nothing the operator can fix (m6 2.3).
+  const reachable = await probeMedia(access.input.media, options.transport ?? liveTransport());
+  if (!reachable.ok) {
+    return refuseSpec(
+      env,
+      { variantId, post, platform: channel.platform },
+      [{ field: "media", level: "blocked", message: reachable.message }],
+      now,
+    );
   }
 
   const publisher = options.publisher ?? publisherFor(channel.platform, creditsFor(env));
@@ -597,6 +616,8 @@ export interface TickReport {
 export interface TickOptions {
   /** Test seam; production resolves the adapter per variant's platform. */
   publisher?: Publisher;
+  /** Test seam; the reachability probe's network. Production sends through `liveTransport()`. */
+  transport?: Transport;
   /** Test seam; production sends through `mailerFrom(env)` — the dev outbox until Resend lands. */
   mailer?: Mailer;
   now?: number;
@@ -634,6 +655,7 @@ export async function runTick(env: WorkerEnv, options: TickOptions): Promise<Tic
 
     const outcome = await publishVariant(env, variantId, {
       publisher: options.publisher,
+      transport: options.transport,
       resume: typeof parsed.containerId === "string" ? { containerId: parsed.containerId } : undefined,
       now,
     });

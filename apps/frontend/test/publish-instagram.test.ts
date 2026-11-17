@@ -18,6 +18,7 @@ import { INSTAGRAM_SHAPES } from "@/publishers/instagram-shapes";
 import type { WorkspaceContext } from "@/lib/context";
 import type { WorkerEnv } from "@/lib/env";
 import { fixtureTransport } from "./support/fixture-transport";
+import { reachableTransport } from "./support/reachable-transport";
 
 import carouselPublished from "./fixtures/instagram/carousel-published.json";
 import containerRejected from "./fixtures/instagram/container-rejected.json";
@@ -38,8 +39,8 @@ function input(overrides: Partial<PublishInput> = {}): PublishInput {
     caption: "A caption",
     hashtags: ["#one"],
     media: [
-      { id: "med-1", url: `${BASE}/media/ws/a.jpg`, kind: "image" },
-      { id: "med-2", url: `${BASE}/media/ws/b.jpg`, kind: "image" },
+      { id: "med-1", key: "media/ws/a.jpg", url: `${BASE}/media/ws/a.jpg`, kind: "image" },
+      { id: "med-2", key: "media/ws/b.jpg", url: `${BASE}/media/ws/b.jpg`, kind: "image" },
     ],
     credentials: { accessToken: "ig-token" },
     ...overrides,
@@ -87,7 +88,7 @@ describe("Instagram shapes", () => {
     const recorded = fixtureTransport(reelParked);
     const publisher = instagramPublisher({ transport: recorded.transport });
     const reel = input({
-      media: [{ id: "med-v", url: `${BASE}/media/ws/reel.mp4`, kind: "video" }],
+      media: [{ id: "med-v", key: "media/ws/reel.mp4", url: `${BASE}/media/ws/reel.mp4`, kind: "video" }],
     });
 
     const created = await publisher.publish(reel);
@@ -123,7 +124,7 @@ describe("Instagram shapes", () => {
     const recorded = fixtureTransport(containerRejected);
     const publisher = instagramPublisher({ transport: recorded.transport });
     const created = await publisher.publish(
-      input({ media: [{ id: "med-1", url: `${BASE}/media/ws/a.jpg`, kind: "image" }] }),
+      input({ media: [{ id: "med-1", key: "media/ws/a.jpg", url: `${BASE}/media/ws/a.jpg`, kind: "image" }] }),
     );
 
     const failed = await publisher.verify(created, input());
@@ -205,9 +206,10 @@ describe("an Instagram publish parks, and a later tick finishes it", () => {
   it("polls on the next tick and stores the permalink the platform returned", async () => {
     const recorded = fixtureTransport(reelParked);
     const publisher = instagramPublisher({ transport: recorded.transport });
+    const probe = reachableTransport();
     const first = Date.now();
 
-    const parked = await runTick(testEnv, { publisher, now: first });
+    const parked = await runTick(testEnv, { publisher, transport: probe.transport, now: first });
     expect(parked.outcomes[0]?.verdict).toBe("awaiting_platform");
 
     const parkedJob = await jobs(testEnv).get(parked.outcomes[0].jobId);
@@ -215,11 +217,11 @@ describe("an Instagram publish parks, and a later tick finishes it", () => {
     expect(JSON.parse(parkedJob?.payload ?? "{}")).toMatchObject({ containerId: "container-reel-1" });
 
     // A tick after the platform's window: the job comes back as queued and is claimed again.
-    const second = await runTick(testEnv, { publisher, now: first + 61_000 });
+    const second = await runTick(testEnv, { publisher, transport: probe.transport, now: first + 61_000 });
     expect(second.claimed).toBe(1);
     expect(second.outcomes[0]?.verdict).toBe("awaiting_platform");
 
-    const third = await runTick(testEnv, { publisher, now: first + 122_000 });
+    const third = await runTick(testEnv, { publisher, transport: probe.transport, now: first + 122_000 });
     expect(third.outcomes[0]?.verdict).toBe("published");
 
     const job = await jobs(testEnv).get(third.outcomes[0].jobId);
@@ -240,11 +242,12 @@ describe("an Instagram publish parks, and a later tick finishes it", () => {
   it("creates one container, not one per tick", async () => {
     const recorded = fixtureTransport(reelParked);
     const publisher = instagramPublisher({ transport: recorded.transport });
+    const probe = reachableTransport();
     const first = Date.now();
 
-    await runTick(testEnv, { publisher, now: first });
-    await runTick(testEnv, { publisher, now: first + 61_000 });
-    await runTick(testEnv, { publisher, now: first + 122_000 });
+    await runTick(testEnv, { publisher, transport: probe.transport, now: first });
+    await runTick(testEnv, { publisher, transport: probe.transport, now: first + 61_000 });
+    await runTick(testEnv, { publisher, transport: probe.transport, now: first + 122_000 });
 
     const containerCalls = recorded.calls.filter((call) => call.url.endsWith("/media"));
     expect(containerCalls).toHaveLength(1);
@@ -287,5 +290,37 @@ describe("media has to resolve to a public URL", () => {
     expect(outcome.verdict).toBe("spec_blocked");
     expect(outcome.detail).toContain(MEDIA_IMAGE);
     expect(recorded.calls).toEqual([]);
+  });
+
+  it("refuses a URL the platform could not fetch, naming the key, before the adapter runs", async () => {
+    const recorded = fixtureTransport({ replies: [] });
+    const probe = reachableTransport(404);
+
+    const outcome = await publishVariant(testEnv, VARIANT, {
+      publisher: instagramPublisher({ transport: recorded.transport }),
+      transport: probe.transport,
+    });
+
+    expect(outcome.verdict).toBe("spec_blocked");
+    expect(outcome.detail).toContain(`media/${WS}/poster.jpg`);
+    expect(outcome.detail).toContain("404");
+    // One HEAD, nothing downloaded, and the platform was never called.
+    expect(probe.calls).toEqual([{ method: "HEAD", url: `${BASE}/media/${WS}/poster.jpg` }]);
+    expect(recorded.calls).toEqual([]);
+  });
+
+  it("checks the URL with a HEAD before publishing, and says nothing when it answers", async () => {
+    const recorded = fixtureTransport(reelParked);
+    const probe = reachableTransport();
+
+    const outcome = await publishVariant(testEnv, VARIANT, {
+      publisher: instagramPublisher({ transport: recorded.transport }),
+      transport: probe.transport,
+    });
+
+    // The probe runs first and passes, so the publish is not blocked by media — whatever the adapter
+    // then answers is the adapter's business (covered above).
+    expect(outcome.verdict).not.toBe("spec_blocked");
+    expect(probe.calls).toEqual([{ method: "HEAD", url: `${BASE}/media/${WS}/poster.jpg` }]);
   });
 });

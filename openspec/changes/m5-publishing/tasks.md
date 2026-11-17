@@ -51,4 +51,4 @@
 
 - [x] 8.1 Mark `US-036`…`US-045` in `docs/006-USER-STORIES.md` — verified against `src/` 2026-11-17: 2 ☑ (US-038, US-042), 8 ◐ (◐ = US-036/037 no Meta connect form — X's is the only one; US-039/040 account and call list never rendered, only platform and count; US-041 no live read-back observed; US-043 Resend deferred, dev outbox only; US-044 board shows no channel state; US-045 Threads tokens never refresh)
 - [ ] 8.2 Record real costs observed for the first X post in the journal — **blocked: waiting on the first live X post** — nothing has published to X yet, so there is no observed cost to record (no fictional numbers)
-- [ ] 8.3 Run `openspec validate m5-publishing` and confirm the change is complete before archiving — **not run**: the docs pass had no shell; structural pre-check by hand passed (proposal, tasks and all three spec deltas conform) — run the CLI before archiving at m6 6.3
+- [x] 8.3 Run `openspec validate m5-publishing` and confirm the change is complete before archiving — validated: `openspec validate m5-publishing` passes (2026-11-17)

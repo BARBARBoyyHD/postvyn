@@ -39,7 +39,10 @@
 
   "vars": {
     "PUBLISHING_ENABLED": "false",
-    "R2_PUBLIC_BASE": ""
+    "R2_PUBLIC_BASE": "",
+    // The bucket's own name, which the R2 binding does not expose: presigning a PUT needs it in the
+    // URL. Must match `r2_buckets[0].bucket_name` above.
+    "R2_BUCKET": "postvyn-bucket"
   },
 
   // Every five minutes: the cadence m4 chose for container polling — a Worker cannot sleep, so

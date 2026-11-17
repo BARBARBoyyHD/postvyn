@@ -1,12 +1,15 @@
 /**
- * `POST /api/v1/media` — the signed-in operator's upload door.
+ * `POST /api/v1/media` — mint a signed upload URL for one asset.
  *
- * Same intake module as `/api/agent/media`; different authentication. Raw bytes in, a media row out.
+ * No bytes here (m6 1.1): the URL covers one key and one content type, expires in minutes, and the
+ * browser PUTs the file straight to R2. The row is written by `POST /api/v1/media/:id/record`, so an
+ * object that never records is invisible rather than half-registered.
  */
 import { resolveContext } from "@/auth/context";
-import { intake } from "@/db/intake";
+import { uploadStore } from "@/db/media-upload";
 import { fail, ok, toErrorResponse } from "@/lib/api";
 import { getBindings } from "@/lib/bindings";
+import { mintUploadSchema, uploadRefusalStatus } from "@/lib/media/upload";
 import type { WorkerEnv } from "@/lib/env";
 import { assertCan } from "@/lib/roles";
 
@@ -19,27 +22,22 @@ export async function POST(request: Request) {
   const resolved = await resolveContext(request, env);
   if (!resolved) return fail(401, "unauthenticated");
 
+  const parsed = mintUploadSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return fail(422, "invalid_upload", parsed.error.flatten());
+
   try {
     assertCan(resolved.ctx, "post.create");
 
-    const result = await intake(env).upload(resolved.ctx, {
-      bytes: await request.arrayBuffer(),
-      filename: request.headers.get("x-postvyn-filename") ?? "upload",
-      postable: request.headers.get("x-postvyn-postable") !== "false",
-    });
-
-    if (!result.ok) {
-      const status = result.code === "too_large" ? 413 : result.code === "unsupported_type" ? 415 : 422;
-      return fail(status as 413 | 415 | 422, result.code, result.message);
-    }
+    const result = await uploadStore(env).mint(resolved.ctx, parsed.data);
+    if (!result.ok) return fail(uploadRefusalStatus(result.code), result.code, result.message);
 
     return ok({
-      mediaId: result.media.id,
-      mime: result.media.mime,
-      bytes: result.media.bytes,
-      width: result.media.width,
-      height: result.media.height,
-      deduplicated: result.deduplicated,
+      uploadId: result.uploadId,
+      key: result.key,
+      url: result.url,
+      mime: result.mime,
+      maxBytes: result.maxBytes,
+      expiresAt: result.expiresAt,
     });
   } catch (error) {
     return toErrorResponse(error);

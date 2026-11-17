@@ -40,6 +40,14 @@ export interface WorkerEnv {
   CRON_SECRET?: string;
   R2_PUBLIC_BASE?: string;
   /**
+   * Uploads (M6): the Worker signs a PUT to R2's S3 endpoint, so bytes go from the browser straight to
+   * the bucket. Absent means uploads are refused with a configuration message, not half-work.
+   */
+  R2_ACCOUNT_ID?: string;
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  R2_BUCKET?: string;
+  /**
    * `"true"` when the X developer account has prepaid credits.
    *
    * X has no free tier (`docs/001-PRD.md` §8), and no API reports a balance. The operator declares it

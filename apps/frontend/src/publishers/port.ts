@@ -24,6 +24,8 @@ import { recordingTransport, type HttpCall, type Transport } from "./transport";
 export interface PublishMedia {
   /** The media row id, so a refusal can name the row the operator has to fix. */
   id: string;
+  /** The stored object key beside the URL: an unreachable URL is fixed by finding this key. */
+  key: string;
   url: string;
   kind: "image" | "video";
 }

@@ -7,18 +7,17 @@
  * fails somewhere the operator cannot see:
  *
  *  - `R2_PUBLIC_BASE` is empty, so nothing is public;
- *  - the row still points at a vault path instead of an R2 key (an import from v0.1). M6 migrates
- *    those rows; until then the refusal says which one, because "media not found" would not.
+ *  - the row still points at a vault path instead of an R2 key (an import from v0.1). Re-uploading
+ *    those bytes gives the row its key (m6 2.4); until then the refusal says which row, because
+ *    "media not found" would not.
  */
 import { and, eq, inArray } from "drizzle-orm";
 
 import { createDb, type Bindings } from "./client";
 import * as s from "./schema";
+import { objectKey, publicMediaUrl } from "@/lib/media/address";
 import type { WorkspaceContext } from "@/lib/context";
 import type { PublishMedia } from "@/publishers/port";
-
-/** Intake writes `media/<workspace>/<hash>.<ext>`; anything else is a path R2 does not serve. */
-const R2_KEY_PREFIX = "media/";
 
 export type MediaRefusal =
   | { ok: false; reason: "base_missing"; message: string }
@@ -32,7 +31,12 @@ export function mediaResolver(env: Bindings & { R2_PUBLIC_BASE?: string }) {
   const db = createDb(env.DB);
 
   return {
-    /** In the variant's order: a reordered carousel is different content (m4 decision 1). */
+    /**
+     * In the variant's order: a reordered carousel is different content (m4 decision 1).
+     *
+     * Every entry carries its R2 key beside the URL. The publisher refuses an unreachable URL by
+     * naming that key — "media 404s at Instagram" is not something an operator can act on.
+     */
     async resolve(ctx: WorkspaceContext, mediaIds: readonly string[]): Promise<MediaResolution> {
       if (mediaIds.length === 0) return { ok: true, media: [] };
 
@@ -73,7 +77,10 @@ export function mediaResolver(env: Bindings & { R2_PUBLIC_BASE?: string }) {
             message: `media ${id} is reference material (postable = 0) and must never ship`,
           };
         }
-        if (!row.key.startsWith(R2_KEY_PREFIX)) {
+
+        const key = objectKey(row);
+        const url = publicMediaUrl(base, key);
+        if (!key || !url) {
           return {
             ok: false,
             reason: "no_object_key",
@@ -82,11 +89,7 @@ export function mediaResolver(env: Bindings & { R2_PUBLIC_BASE?: string }) {
           };
         }
 
-        media.push({
-          id,
-          url: `${base}/${row.key}`,
-          kind: row.mime.startsWith("video/") ? "video" : "image",
-        });
+        media.push({ id, key, url, kind: row.mime.startsWith("video/") ? "video" : "image" });
       }
 
       return { ok: true, media };

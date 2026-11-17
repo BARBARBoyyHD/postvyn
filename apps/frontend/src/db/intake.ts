@@ -1,13 +1,13 @@
 /**
- * Intake: assets in, drafts in.
+ * Intake: drafts in.
  *
- * One implementation, two doors (session and token). Everything that decides whether a file or a caption
- * is acceptable lives here, so the agent path cannot quietly drift into being more permissive than the
- * UI — that is the failure mode a second implementation always produces.
+ * Assets arrive separately now — an upload is a minted URL, bytes straight to R2, and a row written
+ * afterwards (`src/db/media-upload.ts`, m6 1.1–1.8). What is left here is the other half of the door:
+ * turn a caption plus media ids into a post with variants, validated by the spec engine at the moment
+ * it lands.
  *
- * No native image library survives in `workerd` (ADR-013), so dimensions are read from the file headers
- * directly. If a format's header is not understood, the dimensions are null and the aspect-ratio warning
- * is skipped rather than guessed.
+ * One implementation for two doors (session and token), so the agent path cannot quietly drift into
+ * being more permissive than the UI — the failure mode a second implementation always produces.
  */
 import { and, eq, sql } from "drizzle-orm";
 
@@ -15,17 +15,6 @@ import { createDb, type Bindings } from "@/db/client";
 import * as s from "@/db/schema";
 import type { WorkspaceContext } from "@/lib/context";
 import { specVersionFor, validate } from "@/lib/specs/validate";
-
-/** 25 MB. A product limit, not a technical one: signed uploads arrive in M6. */
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-
-const ACCEPTED = ["image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/quicktime"];
-
-export interface UploadInput {
-  bytes: ArrayBuffer;
-  filename: string;
-  postable?: boolean;
-}
 
 export interface DraftTarget {
   channelId?: string;
@@ -47,77 +36,6 @@ export function intake(env: Bindings) {
   const db = createDb(env.DB);
 
   return {
-    /**
-     * Store one asset. Hash first, so a retry that re-sends identical bytes is a lookup, not another
-     * object — and so the key is content-addressed from the start.
-     */
-    async upload(ctx: WorkspaceContext, input: UploadInput) {
-      const bytes = new Uint8Array(input.bytes);
-
-      if (bytes.byteLength === 0) return { ok: false as const, code: "empty_file" };
-      if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-        return {
-          ok: false as const,
-          code: "too_large",
-          message: `${Math.round(bytes.byteLength / (1024 * 1024))} MB, the limit is 25 MB`,
-        };
-      }
-
-      const sniffed = sniff(bytes);
-      if (!sniffed) {
-        return {
-          ok: false as const,
-          code: "unsupported_type",
-          message: `${input.filename}: not a supported image or video (PNG, JPEG, WebP, GIF, MP4, MOV)`,
-        };
-      }
-      // Refused by policy, with the reason: SVG is a script container, and no target platform accepts it
-      // as a photo. Saying "not accepted" would invite the question "why not, it is an image?".
-      if (sniffed.mime === "image/svg+xml") {
-        return {
-          ok: false as const,
-          code: "unsupported_type",
-          message: `${input.filename}: SVG can carry script and is not accepted as a photo — export a PNG or JPEG`,
-        };
-      }
-      if (!ACCEPTED.includes(sniffed.mime)) {
-        return { ok: false as const, code: "unsupported_type", message: `${sniffed.mime} is not accepted` };
-      }
-
-      const hash = await hex(await crypto.subtle.digest("SHA-256", bytes));
-
-      const [existing] = await db
-        .select()
-        .from(s.media)
-        .where(and(eq(s.media.workspaceId, ctx.workspaceId), eq(s.media.hash, hash)))
-        .limit(1);
-      if (existing) return { ok: true as const, media: existing, deduplicated: true };
-
-      const key = `media/${ctx.workspaceId}/${hash}.${extension(sniffed.mime)}`;
-      const dims = dimensions(bytes, sniffed.mime);
-
-      if (!env.MEDIA) {
-        return { ok: false as const, code: "no_storage_binding", message: "R2 binding MEDIA is missing" };
-      }
-      await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: sniffed.mime } });
-
-      const row = {
-        id: `med_${hash.slice(0, 12)}`,
-        workspaceId: ctx.workspaceId,
-        hash,
-        key,
-        mime: sniffed.mime,
-        bytes: bytes.byteLength,
-        width: dims?.width ?? null,
-        height: dims?.height ?? null,
-        postable: input.postable ?? true,
-        createdAt: Date.now(),
-      };
-      await db.insert(s.media).values(row);
-
-      return { ok: true as const, media: row, deduplicated: false };
-    },
-
     /**
      * Create a post with its variants, validated at the door.
      *
@@ -261,65 +179,6 @@ export function intake(env: Bindings) {
       return rows.filter((row) => !referenced.has(row.id));
     },
   };
-}
-
-/** Magic bytes, not extensions: a renamed executable is not a photo. */
-export function sniff(bytes: Uint8Array): { mime: string } | null {
-  const b = bytes;
-  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return { mime: "image/png" };
-  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return { mime: "image/jpeg" };
-  if (b.length >= 6 && ascii(b, 0, 4) === "GIF8") return { mime: "image/gif" };
-  if (b.length >= 12 && ascii(b, 0, 4) === "RIFF" && ascii(b, 8, 4) === "WEBP") return { mime: "image/webp" };
-  if (b.length >= 12 && ascii(b, 4, 4) === "ftyp") {
-    const brand = ascii(b, 8, 4);
-    return { mime: brand === "qt  " ? "video/quicktime" : "video/mp4" };
-  }
-  // SVG is refused by policy: it can carry script, and no target platform accepts it as a photo.
-  if (b.length >= 5 && ascii(b, 0, 4).toLowerCase() === "<svg") return { mime: "image/svg+xml" };
-  return null;
-}
-
-function dimensions(bytes: Uint8Array, mime: string): { width: number; height: number } | null {
-  try {
-    if (mime === "image/png" && bytes.length > 24) {
-      const view = new DataView(bytes.buffer, bytes.byteOffset);
-      return { width: view.getUint32(16), height: view.getUint32(20) };
-    }
-    if (mime === "image/gif" && bytes.length > 10) {
-      const view = new DataView(bytes.buffer, bytes.byteOffset);
-      return { width: view.getUint16(6, true), height: view.getUint16(8, true) };
-    }
-    if (mime === "image/jpeg") {
-      // walk the segments to the first Start-Of-Frame marker
-      let offset = 2;
-      while (offset + 9 < bytes.length) {
-        if (bytes[offset] !== 0xff) return null;
-        const marker = bytes[offset + 1];
-        const length = (bytes[offset + 2] << 8) | bytes[offset + 3];
-        if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-          const height = (bytes[offset + 5] << 8) | bytes[offset + 6];
-          const width = (bytes[offset + 7] << 8) | bytes[offset + 8];
-          return { width, height };
-        }
-        offset += 2 + length;
-      }
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function ascii(bytes: Uint8Array, start: number, length: number): string {
-  return String.fromCharCode(...bytes.slice(start, start + length));
-}
-
-function extension(mime: string): string {
-  return mime.split("/")[1].replace("quicktime", "mov").replace("jpeg", "jpg");
-}
-
-async function hex(buffer: ArrayBuffer): Promise<string> {
-  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function slug(value: string): string {

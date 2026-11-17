@@ -21,12 +21,10 @@ import { createDb } from "./client";
 import * as s from "./schema";
 import { approvals } from "./approvals";
 import { loadPublishTarget } from "./tick";
+import { objectKey, publicMediaUrl } from "@/lib/media/address";
 import { buildTiktokPack, type TiktokAsset, type TiktokPack } from "@/publishers/tiktok";
 import type { WorkspaceContext } from "@/lib/context";
 import type { WorkerEnv } from "@/lib/env";
-
-/** Media in R2 is keyed `media/<workspace>/<hash>.<ext>`; anything else is a path this app cannot serve. */
-const R2_KEY_PREFIX = "media/";
 
 export type PackRead =
   | { ok: true; variantId: string; pack: TiktokPack }
@@ -72,15 +70,20 @@ export function tiktokStore(env: WorkerEnv) {
       .where(and(eq(s.media.workspaceId, ctx.workspaceId), inArray(s.media.id, [...mediaIds])));
 
     const byId = new Map(rows.map((row) => [row.id, row]));
-    const base = env.R2_PUBLIC_BASE?.trim().replace(/\/+$/, "") ?? "";
 
     return mediaIds.flatMap((id) => {
       const row = byId.get(id);
       // A deleted row is left out rather than invented: the pack is a list of files to find.
       if (!row) return [];
       // Same construction as `src/db/media.ts`, minus the refusal: a pack is readable without a URL.
-      const url = base && row.key.startsWith(R2_KEY_PREFIX) ? `${base}/${row.key}` : null;
-      return [{ mediaId: id, kind: row.mime.startsWith("video/") ? "video" : "image", path: row.key, url }];
+      return [
+        {
+          mediaId: id,
+          kind: row.mime.startsWith("video/") ? "video" : "image",
+          path: row.key,
+          url: publicMediaUrl(env.R2_PUBLIC_BASE, objectKey(row)),
+        },
+      ];
     });
   }
 
