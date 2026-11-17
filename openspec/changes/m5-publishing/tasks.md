@@ -37,15 +37,15 @@
 
 ## 6. TikTok pack
 
-- [ ] 6.1 Generate a pack: caption, hashtags, ordered asset paths, checklist, one-line reason
-- [ ] 6.2 Record manual completion with the operator's post URL; `published` only then
-- [ ] 6.3 Show the guideline reason wherever a TikTok target appears
+- [x] 6.1 Generate a pack: caption, hashtags, ordered asset paths, checklist, one-line reason — `buildTiktokPack()` in `src/publishers/tiktok.ts` is pure (caption, hashtags, assets in publish order, five-step checklist, `TIKTOK_REASON`); `GET /api/v1/variants/:id/tiktok-pack` answers it via `src/db/tiktok-pack.ts`, and each asset carries the stored `path` (R2 key or vault path) beside a `url` that is null when no public address exists; "carries the caption, the hashtags, the assets in order, a checklist and the reason" and "labels what is a stored path and what is a public URL" in `test/tiktok-pack.test.ts`
+- [x] 6.2 Record manual completion with the operator's post URL; `published` only then — `POST /api/v1/variants/:id/tiktok-complete` (owner-only, `z.url()` http/https) → `tiktokStore().complete()` in `src/db/tiktok-pack.ts`: verifies the approval, inserts the `succeeded` row through `one_publish_per_variant` (the operator's URL is the read-back for a manual platform — stated in a why-comment), sets the post `published`, settles the parked job and writes `publish.manual_completed`; "records the URL, moves the post to published…", "refuses a second record of the same post…" and "refuses a URL for content that changed after it was approved" in `test/tiktok-pack.test.ts`
+- [x] 6.3 Show the guideline reason wherever a TikTok target appears — backend half done: `manualReason()` in `src/publishers/tiktok.ts` and a `note` field on every variant row from `getPostDetail`, `listBoard` and `listReviewQueue` (`src/db/repository.ts`); the dry run already carried the same sentence in `preview().notes`; "is on every variant row the board, the review queue and the post detail return" in `test/tiktok-pack.test.ts` — the UI must still render `note` (frontend dispatch)
 
 ## 7. Failure handling
 
-- [ ] 7.1 Email on a failed scheduled publish: platform error, account, post link, one suggested action
-- [ ] 7.2 Treat `uncertain` as needing a human, never as retryable
-- [ ] 7.3 Confirm `one_publish_per_variant` prevents a second success even under a retry bug
+- [x] 7.1 Email on a failed scheduled publish: platform error, account, post link, one suggested action — `src/db/alerts.ts` (`sendPublishFailureEmail`, `suggestedAction`) over a third `Mailer` method `sendPublishFailure` in `src/lib/email/index.ts` (dev outbox until Resend lands, ADR-020 deferred), called from `runTick` only where a job goes `dead` and injected through `TickOptions.mailer`; the message quotes the platform's code+message, the channel's `accountRef`, `${BETTER_AUTH_URL}/posts/:id` and one action; "quotes the platform error…" and "three attempts, one email" in `test/failure-alerts.test.ts`
+- [x] 7.2 Treat `uncertain` as needing a human, never as retryable — behaviour was correct and no job-layer fix was needed: `fail(..., {ambiguous: true})` sets `failed` with `lease_until` null, and `claim`, `resumeParked` and `reclaimExpired` each filter on a state it no longer holds; `test/queue.test.ts` now pins two more ticks and a year-long lease sweep claiming nothing, with the result row still `uncertain` and the post not `published`
+- [x] 7.3 Confirm `one_publish_per_variant` prevents a second success even under a retry bug — the partial unique index already exists (`db/migrations/0011_create_publish_results_table.sql`, mirrored in `src/db/schema.ts`), so no migration; three tests in `test/queue.test.ts`: two sequential `publishVariant` calls, two concurrent ones, and a direct second `succeeded` insert the database rejects
 
 ## 8. Close-out
 

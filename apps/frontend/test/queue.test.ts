@@ -14,7 +14,7 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { runTick } from "@/db/tick";
+import { runTick, publishVariant } from "@/db/tick";
 import { jobs, LEASE_MS, MAX_ATTEMPTS } from "@/db/jobs";
 import { approvals } from "@/db/approvals";
 import { credentialStore } from "@/db/credentials";
@@ -280,21 +280,49 @@ describe("the queue", () => {
 
   it("treats an ambiguous failure as uncertain and never retries it", async () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
-    await runTick(testEnv, {
-      publisher: stub({ status: "uncertain", detail: "socket closed after send" }),
+
+    let calls = 0;
+    const publisher = stub(() => {
+      calls += 1;
+      return { status: "uncertain", detail: "socket closed after send" };
     });
 
-    const job = await env.DB.prepare("select state, last_error from jobs").first<{
+    await runTick(testEnv, { publisher });
+
+    const job = await env.DB.prepare("select state, attempts, lease_until, last_error from jobs").first<{
       state: string;
+      attempts: number;
+      lease_until: number | null;
       last_error: string;
     }>();
     expect(job?.state).toBe("failed");
+    expect(job?.attempts).toBe(1);
     expect(job?.last_error).toContain("uncertain");
+    // No lease is held, so nothing can ever "expire" into a retry.
+    expect(job?.lease_until).toBeNull();
 
     const result = await env.DB.prepare("select state from publish_results where variant_id = ?")
       .bind(VARIANT)
       .first<{ state: string }>();
     expect(result?.state).toBe("uncertain");
+
+    // Two ticks' worth of chances for a retry that must never come: neither the queue nor a lease
+    // sweep may touch it, because a duplicate post cannot be undone from this side.
+    await env.DB.prepare("update jobs set run_after = ? where id is not null").bind(Date.now() - 1).run();
+    const after = await runTick(testEnv, { publisher });
+    expect(after.claimed).toBe(0);
+    expect(calls).toBe(1);
+
+    const swept = await jobs(testEnv).reclaimExpired(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    expect(swept).toEqual({ requeued: [], dead: [] });
+
+    const settled = await env.DB.prepare("select state from jobs").first<{ state: string }>();
+    expect(settled?.state).toBe("failed");
+
+    const post = await env.DB.prepare("select status from posts where id = ?")
+      .bind(POST)
+      .first<{ status: string }>();
+    expect(post?.status).not.toBe("published");
   });
 
   it("reclaims a job whose lease expired", async () => {
@@ -361,6 +389,65 @@ describe("the queue", () => {
     }>();
     expect(row?.attempt_started_at).toBeGreaterThanOrEqual(startedAfter);
     expect(row?.attempt_finished_at).toBeGreaterThanOrEqual(row!.attempt_started_at);
+  });
+});
+
+/**
+ * `one_publish_per_variant` (migration 0011) is the last line of defence against a duplicate post.
+ *
+ * The queue is written so this should never be reached: a claim is a guarded single UPDATE, an
+ * ambiguous answer is never retried, and `publishVariant` verifies before it claims success. But
+ * "should never be reached" is exactly the kind of statement a retry bug disproves at 3 a.m., so the
+ * constraint is proven here twice: through the code path, and against the database directly.
+ */
+describe("one success per variant, even under a retry bug", () => {
+  beforeEach(async () => {
+    await seed();
+    await resetJobs();
+    await env.DB.prepare("update variants set caption = 'the caption' where id = ?").bind(VARIANT).run();
+  });
+
+  const succeeding = () =>
+    stub({ status: "published", platformPostId: "x_1", permalink: "https://x.test/1" });
+
+  it("two publish attempts in a row record one success, not two", async () => {
+    await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
+
+    await publishVariant(testEnv, VARIANT, { publisher: succeeding() });
+    await publishVariant(testEnv, VARIANT, { publisher: succeeding() });
+
+    const counted = await env.DB.prepare(
+      "select count(*) as n from publish_results where variant_id = ? and state = 'succeeded'",
+    )
+      .bind(VARIANT)
+      .first<{ n: number }>();
+    expect(Number(counted?.n)).toBe(1);
+  });
+
+  it("two attempts running at once still record one success", async () => {
+    await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
+
+    await Promise.all([
+      publishVariant(testEnv, VARIANT, { publisher: succeeding() }),
+      publishVariant(testEnv, VARIANT, { publisher: succeeding() }),
+    ]);
+
+    const rows = await env.DB.prepare("select state from publish_results where variant_id = ?")
+      .bind(VARIANT)
+      .all<{ state: string }>();
+    expect(rows.results.filter((row) => row.state === "succeeded")).toHaveLength(1);
+  });
+
+  it("the database refuses a second success whatever the code believes", async () => {
+    const insert = (id: string) =>
+      env.DB.prepare(
+        "insert into publish_results (id, variant_id, platform, state, url) values (?, ?, 'x', 'succeeded', 'https://x.test/1')",
+      )
+        .bind(id, VARIANT)
+        .run();
+
+    await insert("pub_first");
+    await expect(insert("pub_second")).rejects.toThrow(/UNIQUE constraint failed/i);
   });
 });
 

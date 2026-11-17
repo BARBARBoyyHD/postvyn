@@ -24,6 +24,7 @@ import { eq } from "drizzle-orm";
 
 import { createDb, type Bindings } from "./client";
 import * as s from "./schema";
+import { sendPublishFailureEmail } from "./alerts";
 import { approvals } from "./approvals";
 import { credentialStore } from "./credentials";
 import { jobs, LEASE_MS } from "./jobs";
@@ -39,6 +40,7 @@ import {
   type PublishResult,
 } from "@/publishers/port";
 import { systemContext } from "@/lib/context";
+import type { Mailer } from "@/lib/email";
 import type { WorkerEnv } from "@/lib/env";
 import type { SpecIssue } from "@/lib/specs/validate";
 
@@ -83,13 +85,15 @@ export interface PublishOptions {
  * The three rows every publish question needs: the variant, its post (the tenant) and its channel.
  *
  * Separate from `publishVariant` because the dry run asks the same question and must answer it the
- * same way — a preview that resolved a different channel would describe a different publish.
+ * same way — a preview that resolved a different channel would describe a different publish. Not
+ * scoped by itself: the caller compares `post.workspaceId` with its context, because the button and
+ * the tick arrive here after a route that already resolved the tenant.
  */
-type TargetLookup =
+export type TargetLookup =
   | { ok: true; variant: s.Variant; post: s.Post; channel: s.Channel }
   | { ok: false; reason: "variant_missing" | "orphan" };
 
-async function loadTarget(env: WorkerEnv, variantId: string): Promise<TargetLookup> {
+export async function loadPublishTarget(env: WorkerEnv, variantId: string): Promise<TargetLookup> {
   const db = createDb(env.DB);
 
   const [variant] = await db.select().from(s.variants).where(eq(s.variants.id, variantId)).limit(1);
@@ -210,7 +214,7 @@ export async function publishVariant(
   const db = createDb(env.DB);
   const now = options.now ?? Date.now();
 
-  const target = await loadTarget(env, variantId);
+  const target = await loadPublishTarget(env, variantId);
   if (!target.ok) return { variantId, platform: "unknown", verdict: "none", detail: target.reason };
   const { variant, post, channel } = target;
 
@@ -513,7 +517,7 @@ export async function previewVariant(
   variantId: string,
   options: PublishOptions = {},
 ): Promise<PreviewOutcome> {
-  const target = await loadTarget(env, variantId);
+  const target = await loadPublishTarget(env, variantId);
   if (!target.ok) return { ok: false, variantId, reason: "not_found", detail: target.reason };
 
   const publisher = options.publisher ?? publisherFor(target.channel.platform, creditsFor(env));
@@ -593,6 +597,8 @@ export interface TickReport {
 export interface TickOptions {
   /** Test seam; production resolves the adapter per variant's platform. */
   publisher?: Publisher;
+  /** Test seam; production sends through `mailerFrom(env)` — the dev outbox until Resend lands. */
+  mailer?: Mailer;
   now?: number;
   maxJobs?: number;
   /** The global kill switch; workspace switches are checked inside the claim. */
@@ -619,18 +625,29 @@ export async function runTick(env: WorkerEnv, options: TickOptions): Promise<Tic
     report.claimed += 1;
 
     const parsed = safeJson(job.payload) as { variantId?: string; containerId?: string };
-    if (!parsed.variantId) {
+    const variantId = parsed.variantId;
+    if (!variantId) {
       await store.fail(job.id, "job payload has no variantId");
       report.outcomes.push({ jobId: job.id, verdict: "none", detail: "payload" });
       continue;
     }
 
-    const outcome = await publishVariant(env, parsed.variantId, {
+    const outcome = await publishVariant(env, variantId, {
       publisher: options.publisher,
       resume: typeof parsed.containerId === "string" ? { containerId: parsed.containerId } : undefined,
       now,
     });
     report.outcomes.push({ jobId: job.id, verdict: outcome.verdict, detail: outcome.detail });
+
+    /**
+     * Tell the operator, once, when the job stops for good (spec: m5-publishing 7.1).
+     *
+     * Only terminal outcomes — a retry that may still succeed is not news, and an email per attempt
+     * teaches the one person who reads these to ignore them.
+     */
+    const tellOperator = async () => {
+      await sendPublishFailureEmail(env, { variantId, outcome }, options.mailer);
+    };
 
     switch (outcome.verdict) {
       case "published":
@@ -676,22 +693,27 @@ export async function runTick(env: WorkerEnv, options: TickOptions): Promise<Tic
         // (docs/003-ITA.md §7: "402 → top up credits, not retryable").
         if (isCostProblem(outcome)) {
           await store.dead(job.id, `cost_blocked: ${reason}`);
+          await tellOperator();
           break;
         }
 
-        await store.fail(job.id, reason);
+        const stopped = await store.fail(job.id, reason);
+        if (stopped.state === "dead") await tellOperator();
         break;
       }
       case "reapproval_required":
         // Content changed under an approval: a human problem, so terminal rather than retried.
         await store.dead(job.id, outcome.detail ?? "reapproval_required");
+        await tellOperator();
         break;
       case "spec_blocked":
         // The platform would reject it. Retrying cannot fix text; the operator edits and re-approves.
         await store.dead(job.id, outcome.detail ?? "spec_blocked");
+        await tellOperator();
         break;
       case "none": {
-        await store.fail(job.id, outcome.detail ?? "unknown outcome");
+        const stopped = await store.fail(job.id, outcome.detail ?? "unknown outcome");
+        if (stopped.state === "dead") await tellOperator();
         break;
       }
       default: {

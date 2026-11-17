@@ -11,6 +11,7 @@
  */
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { effectiveChannelStatus } from "@/lib/channel-state";
+import { manualReason } from "@/publishers/tiktok";
 import type { WorkspaceContext } from "@/lib/context";
 import type { Bindings } from "./bindings";
 import { createDb } from "./client";
@@ -370,7 +371,7 @@ export function repository(env: Bindings) {
 
       return {
         post,
-        variants: variantRows,
+        variants: variantRows.map(withManualReason),
         media: mediaRows,
         activity,
         attempts: attemptRows,
@@ -429,7 +430,7 @@ export function repository(env: Bindings) {
             .orderBy(s.channels.platform)
         : [];
 
-      return { posts, variants };
+      return { posts, variants: variants.map(withManualReason) };
     },
 
     // ── work queue ───────────────────────────────────────────────────────────────────────────
@@ -562,11 +563,22 @@ export function repository(env: Bindings) {
       return {
         counts,
         posts,
-        variants,
+        variants: variants.map(withManualReason),
         nextCursor: hasMore ? encodeCursor(posts[posts.length - 1]) : null,
       };
       },
   };
+}
+
+/**
+ * Carry the guideline reason with every variant row.
+ *
+ * A TikTok target appears on the board, in the review queue and on the post detail, and all three get
+ * the same sentence — a card that says "TikTok" and nothing else is an invitation to ask why it never
+ * posts. Null for the three platforms that publish themselves, so a client can test the field.
+ */
+function withManualReason<T extends { platform: string }>(row: T): T & { note: string | null } {
+  return { ...row, note: manualReason(row.platform) };
 }
 
 /**

@@ -16,6 +16,8 @@ import { GET as getDueJobs } from "@/app/api/v1/jobs/due/route";
 import { POST as postPublish } from "@/app/api/v1/posts/[id]/publish/route";
 import { GET as getQueue } from "@/app/api/v1/queue/route";
 import { GET as getPost } from "@/app/api/v1/posts/[id]/route";
+import { GET as getTiktokPack } from "@/app/api/v1/variants/[id]/tiktok-pack/route";
+import { POST as postTiktokComplete } from "@/app/api/v1/variants/[id]/tiktok-complete/route";
 import { POST as postBatchApprove } from "@/app/api/v1/variants/approve/route";
 
 type Handler = (request: Request, context: { params: Promise<Record<string, string>> }) => Promise<Response>;
@@ -53,6 +55,18 @@ const PROTECTED: { name: string; handler: Handler; method: string; path: string 
     handler: postPublish as Handler,
     method: "POST",
     path: "/api/v1/posts/post_zavron_2026-10-about-zavron/publish",
+  },
+  {
+    name: "GET /api/v1/variants/:id/tiktok-pack",
+    handler: getTiktokPack as Handler,
+    method: "GET",
+    path: "/api/v1/variants/var_zavron_tiktok/tiktok-pack",
+  },
+  {
+    name: "POST /api/v1/variants/:id/tiktok-complete",
+    handler: postTiktokComplete as Handler,
+    method: "POST",
+    path: "/api/v1/variants/var_zavron_tiktok/tiktok-complete",
   },
   { name: "GET /api/v1/channels", handler: getChannels as Handler, method: "GET", path: "/api/v1/channels" },
   {
