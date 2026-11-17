@@ -7,8 +7,10 @@
  * lives in one file; the flows around it stay separate, because the two platforms' container
  * mechanics and field names are genuinely different.
  */
-import type { PlatformError, PublishInput, PublishResult } from "./port";
+import { DRY_RUN, type PlatformError, type PublishInput, type PublishResult } from "./port";
 import type { TransportReply } from "./transport";
+
+export { DRY_RUN };
 
 /**
  * Meta's token-failure codes: 190 expired/invalid access token, 102 invalid session, 463/467 the
@@ -19,14 +21,6 @@ import type { TransportReply } from "./transport";
  * rate limit must stay a retryable failure (its own code, 613, says so).
  */
 const TOKEN_ERROR_CODES = new Set(["190", "102", "463", "467"]);
-
-/**
- * What the dry run answers when the flow reaches its first send.
- *
- * `uncertain` rather than a fabricated success, for the same reason the recording transport replies
- * `dry_run`: a fake 200 would let the adapter believe it had a container id.
- */
-export const DRY_RUN: PublishResult = { status: "uncertain", detail: "a dry run sends nothing" };
 
 /** The bearer token, or null when the channel was stored without one. */
 export function accessToken(input: PublishInput): string | null {

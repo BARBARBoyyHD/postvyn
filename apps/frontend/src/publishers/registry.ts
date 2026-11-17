@@ -8,12 +8,22 @@
 import type { Platform } from "@/lib/specs/platforms";
 
 import { instagramPublisher } from "./instagram";
-import { notConnectedPublisher, type Publisher } from "./port";
-import { threadsPublisher } from "./threads";
+import { type Publisher } from "./port";import { threadsPublisher } from "./threads";
 import { tiktokRefusal } from "./tiktok";
 import { liveTransport } from "./transport";
+import { xPublisher } from "./x";
 
-export function publisherFor(platform: Platform): Publisher {
+/**
+ * What the caller knows that an adapter cannot: whether a metered platform has been funded.
+ *
+ * Default false. X is the only platform that charges, and refusing to spend unconfigured money is
+ * the safe answer when nobody said otherwise (design.md decision 5).
+ */
+export interface PublisherOptions {
+  creditsConfigured?: boolean;
+}
+
+export function publisherFor(platform: Platform, options: PublisherOptions = {}): Publisher {
   switch (platform) {
     case "instagram":
       return instagramPublisher({ transport: liveTransport() });
@@ -22,8 +32,10 @@ export function publisherFor(platform: Platform): Publisher {
     case "tiktok":
       return tiktokRefusal();
     case "x":
-      // §5 of this change. The stand-in is honest until OAuth 1.0a signing and cost disclosure land.
-      return notConnectedPublisher();
+      return xPublisher({
+        transport: liveTransport(),
+        creditsConfigured: options.creditsConfigured ?? false,
+      });
     default: {
       const never: never = platform;
       throw new Error(`no publisher for platform ${String(never)}`);

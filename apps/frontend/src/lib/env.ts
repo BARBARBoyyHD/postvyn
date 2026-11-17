@@ -39,6 +39,14 @@ export interface WorkerEnv {
   PUBLISHING_ENABLED?: string;
   CRON_SECRET?: string;
   R2_PUBLIC_BASE?: string;
+  /**
+   * `"true"` when the X developer account has prepaid credits.
+   *
+   * X has no free tier (`docs/001-PRD.md` §8), and no API reports a balance. The operator declares it
+   * once; without it the X adapter refuses with a message instead of discovering a 402 in a cron log
+   * (design.md decision 5).
+   */
+  X_CREDITS_CONFIGURED?: string;
 }
 
 /** The variables without which authentication cannot run at all. */

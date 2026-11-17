@@ -1,0 +1,10 @@
+{
+  "replies": [
+    {
+      "status": 401,
+      "body": {
+        "errors": [{ "code": 89, "message": "Invalid or expired token." }]
+      }
+    }
+  ]
+}

@@ -102,6 +102,35 @@ export interface Publisher {
    * adapter holds nothing: a token is not something an adapter may keep between invocations.
    */
   verify(result: PublishResult, input: PublishInput): Promise<PublishResult>;
+  /**
+   * What sending this variant costs, from its shape alone — the same number `preview()` shows.
+   *
+   * Optional because only a metered platform has an answer: Instagram and Threads are free. The
+   * queue records it with the result, so the estimate the operator saw is the one that was spent
+   * (spec: publishers §"X's cost is disclosed before it is incurred").
+   */
+  estimateCostUsd?(input: PublishInput): number | null;
+}
+
+/**
+ * What the dry run answers when the flow reaches its first send.
+ *
+ * `uncertain` rather than a fabricated success: a fake 200 would let an adapter believe it had a
+ * container or a media id. Every adapter answers this, so it lives with the vocabulary.
+ */
+export const DRY_RUN: PublishResult = { status: "uncertain", detail: "a dry run sends nothing" };
+
+/**
+ * HTTP 402 from a metered platform: the account is out of prepaid credits.
+ *
+ * It is a spending problem, not a transient one — retrying with no credits buys nothing, and a
+ * backoff that treats it as weather would retry three times before saying so
+ * (`docs/003-ITA.md` §7: "402 → top up credits, not retryable").
+ */
+export const PAYMENT_REQUIRED_CODE = "402";
+
+export function isCostProblem(result: { platformError?: PlatformError }): boolean {
+  return result.platformError?.code === PAYMENT_REQUIRED_CODE;
 }
 
 /**

@@ -360,6 +360,7 @@ export function repository(env: Bindings) {
               platform: s.publishResults.platform,
               state: s.publishResults.state,
               url: s.publishResults.url,
+              estimatedCostUsd: s.publishResults.estimatedCostUsd,
               createdAt: s.publishResults.createdAt,
             })
             .from(s.publishResults)

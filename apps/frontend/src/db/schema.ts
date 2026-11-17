@@ -9,7 +9,7 @@
  * JSON is TEXT read with `json_extract()`.
  */
 import { sql } from "drizzle-orm";
-import { blob, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const nowMs = sql`(unixepoch() * 1000)`;
 
@@ -261,6 +261,8 @@ export const publishResults = sqliteTable(
     url: text("url"),
     raw: text("raw"),
     state: text("state", { enum: ["succeeded", "failed", "uncertain"] }).notNull(),
+    /** What the send was estimated to cost, in USD, kept so the price shown is the price spent. */
+    estimatedCostUsd: real("estimated_cost_usd"),
     createdAt: integer("created_at").notNull().default(nowMs),
   },
   (t) => [

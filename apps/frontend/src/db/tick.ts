@@ -30,7 +30,14 @@ import { jobs, LEASE_MS } from "./jobs";
 import { mediaResolver } from "./media";
 import { specGate } from "./spec-gate";
 import { publisherFor } from "@/publishers/registry";
-import type { PlatformError, Publisher, Preview, PublishInput, PublishResult } from "@/publishers/port";
+import {
+  isCostProblem,
+  type PlatformError,
+  type Publisher,
+  type Preview,
+  type PublishInput,
+  type PublishResult,
+} from "@/publishers/port";
 import { systemContext } from "@/lib/context";
 import type { WorkerEnv } from "@/lib/env";
 import type { SpecIssue } from "@/lib/specs/validate";
@@ -55,6 +62,8 @@ export interface VariantOutcome {
   resumeAfterMs?: number;
   /** Only for `awaiting_platform`: the container the next tick polls instead of creating another. */
   containerId?: string;
+  /** What the send was estimated to cost; null for a platform that does not meter (free ones). */
+  estimatedCostUsd?: number | null;
 }
 
 /**
@@ -248,7 +257,8 @@ export async function publishVariant(
     return { variantId, platform: access.platform, verdict: access.verdict, detail: access.detail };
   }
 
-  const publisher = options.publisher ?? publisherFor(channel.platform);
+  const publisher = options.publisher ?? publisherFor(channel.platform, creditsFor(env));
+  const estimateCostUsd = publisher.estimateCostUsd?.(access.input) ?? null;
   const result = await send(publisher, access.input, options.resume);
 
   switch (result.status) {
@@ -263,6 +273,7 @@ export async function publishVariant(
           url: result.permalink,
           raw: result.raw === undefined ? null : JSON.stringify(result.raw).slice(0, 4000),
           state: "succeeded",
+          estimatedCostUsd: estimateCostUsd,
           createdAt: now,
         })
         // the partial unique index allows exactly one success per variant
@@ -284,6 +295,7 @@ export async function publishVariant(
         platform: channel.platform,
         verdict: "published",
         url: result.permalink,
+        estimatedCostUsd: estimateCostUsd,
       };
     }
 
@@ -298,6 +310,7 @@ export async function publishVariant(
           url: null,
           raw: JSON.stringify(result.platformError ?? { detail: result.detail }).slice(0, 2000),
           state: "uncertain",
+          estimatedCostUsd: estimateCostUsd,
           createdAt: now,
         })
         .onConflictDoNothing();
@@ -308,6 +321,7 @@ export async function publishVariant(
         verdict: "uncertain",
         detail: result.detail,
         platformError: result.platformError,
+        estimatedCostUsd: estimateCostUsd,
       };
     }
 
@@ -324,9 +338,29 @@ export async function publishVariant(
           // later investigation can match them against the platform's own logs.
           raw: JSON.stringify(result.platformError).slice(0, 2000),
           state: "failed",
+          estimatedCostUsd: estimateCostUsd,
           createdAt: now,
         })
         .onConflictDoNothing();
+
+      // Out of credits is a spending problem, not a failed post: it gets its own audit line so the
+      // board and the alert read "top up X" rather than "publish failed at 07:00".
+      if (isCostProblem(result)) {
+        await db.insert(s.activityLog).values({
+          id: `act_${crypto.randomUUID().slice(0, 8)}`,
+          workspaceId: post.workspaceId,
+          postId: post.id,
+          actorId: null,
+          action: "publish.cost_blocked",
+          detail: JSON.stringify({
+            variantId,
+            platform: channel.platform,
+            platformError: result.platformError,
+            estimatedCostUsd: estimateCostUsd,
+          }),
+          createdAt: now,
+        });
+      }
 
       return {
         variantId,
@@ -334,6 +368,7 @@ export async function publishVariant(
         verdict: "failed",
         detail: result.platformError.message,
         platformError: result.platformError,
+        estimatedCostUsd: estimateCostUsd,
       };
     }
 
@@ -360,6 +395,7 @@ export async function publishVariant(
           url: null,
           raw: JSON.stringify(result.platformError).slice(0, 2000),
           state: "failed",
+          estimatedCostUsd: estimateCostUsd,
           createdAt: now,
         })
         .onConflictDoNothing();
@@ -379,12 +415,23 @@ export async function publishVariant(
         verdict: "reauth_required",
         detail: result.platformError.message,
         platformError: result.platformError,
+        estimatedCostUsd: estimateCostUsd,
       };
     }
 
     case "not_connected":
       return { variantId, platform: channel.platform, verdict: "not_connected", detail: result.reason };
   }
+}
+
+/**
+ * Whether a metered platform has been funded — the one thing an adapter cannot know.
+ *
+ * Read here because this is where the environment lives; passed down because `src/publishers` holds
+ * no env and no database (`AGENTS.md`, layering).
+ */
+function creditsFor(env: WorkerEnv): { creditsConfigured: boolean } {
+  return { creditsConfigured: env.X_CREDITS_CONFIGURED === "true" };
 }
 
 /**
@@ -469,7 +516,7 @@ export async function previewVariant(
   const target = await loadTarget(env, variantId);
   if (!target.ok) return { ok: false, variantId, reason: "not_found", detail: target.reason };
 
-  const publisher = options.publisher ?? publisherFor(target.channel.platform);
+  const publisher = options.publisher ?? publisherFor(target.channel.platform, creditsFor(env));
 
   // An empty call list would read as "nothing would be sent to this platform", which is not the same
   // statement as "there is no adapter for it yet". Say the true one.
@@ -622,10 +669,17 @@ export async function runTick(env: WorkerEnv, options: TickOptions): Promise<Tic
       case "failed": {
         // The platform's own code and message: "publish failed" is not actionable at 07:00.
         const error = outcome.platformError;
-        await store.fail(
-          job.id,
-          error ? `${error.code}: ${error.message}` : (outcome.detail ?? "publish failed"),
-        );
+        const reason = error ? `${error.code}: ${error.message}` : (outcome.detail ?? "publish failed");
+
+        // Out of credits is money, not weather: retrying spends nothing and fixes nothing, so the
+        // job stops here instead of burning the backoff that a transient failure gets
+        // (docs/003-ITA.md §7: "402 → top up credits, not retryable").
+        if (isCostProblem(outcome)) {
+          await store.dead(job.id, `cost_blocked: ${reason}`);
+          break;
+        }
+
+        await store.fail(job.id, reason);
         break;
       }
       case "reapproval_required":

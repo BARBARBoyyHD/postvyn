@@ -1,0 +1,13 @@
+{
+  "replies": [
+    {
+      "status": 402,
+      "body": {
+        "title": "Payment Required",
+        "detail": "Your account does not have enough credits to create a Post.",
+        "type": "about:blank",
+        "status": 402
+      }
+    }
+  ]
+}

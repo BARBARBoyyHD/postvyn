@@ -29,11 +29,11 @@
 
 ## 5. X adapter
 
-- [ ] 5.1 OAuth 1.0a request signing from four stored credentials
-- [ ] 5.2 Chunked video upload where the post carries video
-- [ ] 5.3 Cost estimate from the post's shape; shown before the first post, stored with the result
-- [ ] 5.4 Refuse to publish when credits are not configured, with a message that says so
-- [ ] 5.5 `402` handling recorded as a cost problem, not a failure
+- [x] 5.1 OAuth 1.0a request signing from four stored credentials — `src/publishers/x-oauth.ts`: HMAC-SHA1 over `crypto.subtle`, RFC 3986 percent-encoding, query and form-body parameters signed while only `oauth_*` travel in the header; `apiKey/apiSecret/accessToken/accessSecret` come from `PublishInput.credentials`; the oauth.net reference header and X's worked example are reproduced exactly in `test/publish-x.test.ts` (that test caught query parameters leaking into the header)
+- [x] 5.2 Chunked video upload where the post carries video — `src/publishers/x-media.ts`: download the bytes → INIT → `X_UPLOAD_CHUNK_BYTES` (5 MB, X's chunked-upload limit) APPENDs → FINALIZE; `processing_info.pending` parks the job with the media id as the resume token, `verify()` polls STATUS then creates one tweet; "uploads a video in 5 MB segments, parks while X processes it, then posts once" and "stops at a refusal mid-upload" in `test/publish-x.test.ts` over `test/fixtures/x/{video-processing,media-append-fails}.json`
+- [x] 5.3 Cost estimate from the post's shape; shown before the first post, stored with the result — `X_COST_PER_POST_USD = 0.015` / `X_COST_PER_POST_WITH_LINK_USD = 0.2` (`docs/001-PRD.md` §8, `docs/005-REQUIREMENTS.md` §4) in `src/publishers/x.ts`, a bare domain counting as a link (`docs/003-ITA.md` §11); `preview()` returns it and starts with it; `Publisher.estimateCostUsd()` feeds `publish_results.estimated_cost_usd` (migration `0019`) from `src/db/tick.ts`, and `VariantOutcome.estimatedCostUsd` carries it to the API. The dry-run route already answers with previews — no UI renders it yet (later dispatch)
+- [x] 5.4 Refuse to publish when credits are not configured, with a message that says so — `X_CREDITS_CONFIGURED` (env, `.env.example`) → `publisherFor(platform, {creditsConfigured})` → the adapter answers `not_connected` with a message naming the switch *before* any call, and the preview carries the same sentence; "refuses before the first call when credits are not configured" in `test/publish-x.test.ts`
+- [x] 5.5 `402` handling recorded as a cost problem, not a failure — X's 402 stays `failed` with its code pinned to `PAYMENT_REQUIRED_CODE` (`src/publishers/port.ts`, `xFailure()`), so `src/db/tick.ts` writes a `publish.cost_blocked` audit row and kills the job (`dead`, `cost_blocked: 402: …`) instead of spending the 1/4/9-minute retries; the choice avoids widening the `publish_results.state` CHECK, which SQLite can only change by rebuilding the table; "records 402 as a cost problem and stops the job instead of retrying it" in `test/publish-x.test.ts`
 
 ## 6. TikTok pack
 

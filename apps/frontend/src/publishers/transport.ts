@@ -14,6 +14,8 @@ export interface HttpCall {
   /** Header **names** are shown in a preview; values are not, because a token lives in some of them. */
   headers?: Record<string, string>;
   body?: string;
+  /** A binary body. `body` is the text case; a media chunk cannot be a string (X uploads bytes). */
+  bodyBytes?: Uint8Array<ArrayBuffer>;
 }
 
 export type TransportReply =
@@ -21,8 +23,20 @@ export type TransportReply =
   /** The dry-run transport: the call is recorded and the flow stops at the first send. */
   | { kind: "dry_run" };
 
+export type DownloadReply =
+  | { kind: "bytes"; status: number; bytes: Uint8Array<ArrayBuffer> }
+  /** The dry run records the URL and never opens a socket. */
+  | { kind: "dry_run" };
+
 export interface Transport {
   send(call: HttpCall): Promise<TransportReply>;
+  /**
+   * Fetch the bytes of media the adapter has to upload itself.
+   *
+   * Meta fetches a URL; X cannot — it takes the bytes, chunk by chunk. Separate from `send` because
+   * an answer is binary here, and a text body would corrupt every video that went through it.
+   */
+  download(url: string): Promise<DownloadReply>;
 }
 
 export function liveTransport(fetchImpl: typeof fetch = fetch): Transport {
@@ -31,9 +45,17 @@ export function liveTransport(fetchImpl: typeof fetch = fetch): Transport {
       const response = await fetchImpl(call.url, {
         method: call.method,
         headers: call.headers,
-        body: call.body,
+        body: call.bodyBytes ?? call.body,
       });
       return { kind: "response", status: response.status, body: await response.text() };
+    },
+    async download(url) {
+      const response = await fetchImpl(url);
+      return {
+        kind: "bytes",
+        status: response.status,
+        bytes: new Uint8Array(await response.arrayBuffer()),
+      };
     },
   };
 }
@@ -52,6 +74,10 @@ export function recordingTransport(): { transport: Transport; calls: HttpCall[] 
     transport: {
       async send(call) {
         calls.push(call);
+        return { kind: "dry_run" };
+      },
+      async download(url) {
+        calls.push({ method: "GET", url });
         return { kind: "dry_run" };
       },
     },
