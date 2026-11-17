@@ -22,10 +22,12 @@ import { createDb, type Bindings } from "./client";
 import * as s from "./schema";
 import { approvals } from "./approvals";
 import { jobs, LEASE_MS } from "./jobs";
+import { specGate } from "./spec-gate";
 import type { Publisher, PublishOutcome } from "@/publishers/port";
 import type { WorkerEnv } from "@/lib/env";
+import type { SpecIssue } from "@/lib/specs/validate";
 
-export type Verdict = PublishOutcome["state"] | "reapproval_required" | "none";
+export type Verdict = PublishOutcome["state"] | "reapproval_required" | "spec_blocked" | "none";
 
 export interface VariantOutcome {
   variantId: string;
@@ -33,6 +35,8 @@ export interface VariantOutcome {
   verdict: Verdict;
   detail?: string;
   url?: string | null;
+  /** Only for `spec_blocked`: the platform rules the content fails, named individually. */
+  violations?: SpecIssue[];
   /** Only for `awaiting_platform`: how long the caller should wait before looking again. */
   resumeAfterMs?: number;
 }
@@ -72,6 +76,28 @@ export async function publishVariant(
       createdAt: now,
     });
     return { variantId, platform: channel.platform, verdict: "reapproval_required", detail: check.reason };
+  }
+
+  // ── and the spec verdict is recomputed too: a stored `ok` can predate the rules ────────────────
+  const gate = await specGate(env).check(variant);
+  if (!gate.ok) {
+    await db.update(s.posts).set({ status: "review", updatedAt: now }).where(eq(s.posts.id, post.id));
+    await db.insert(s.activityLog).values({
+      id: `act_${crypto.randomUUID().slice(0, 8)}`,
+      workspaceId: post.workspaceId,
+      postId: post.id,
+      actorId: null,
+      action: "publish.refused",
+      detail: JSON.stringify({ variantId, reason: "spec_blocked", violations: gate.violations }),
+      createdAt: now,
+    });
+    return {
+      variantId,
+      platform: channel.platform,
+      verdict: "spec_blocked",
+      detail: gate.violations[0]?.message ?? "blocked by the platform specs",
+      violations: gate.violations,
+    };
   }
 
   const result = await publisher.publish({
@@ -187,7 +213,9 @@ export async function publishNow(
     postId,
     outcomes,
     published: outcomes.filter((outcome) => outcome.verdict === "published").length,
-    blocked: outcomes.filter((outcome) => outcome.verdict === "reapproval_required").length,
+    blocked: outcomes.filter(
+      (outcome) => outcome.verdict === "reapproval_required" || outcome.verdict === "spec_blocked",
+    ).length,
   };
 }
 
@@ -253,6 +281,10 @@ export async function runTick(env: WorkerEnv, options: TickOptions): Promise<Tic
       case "reapproval_required":
         // Content changed under an approval: a human problem, so terminal rather than retried.
         await store.dead(job.id, outcome.detail ?? "reapproval_required");
+        break;
+      case "spec_blocked":
+        // The platform would reject it. Retrying cannot fix text; the operator edits and re-approves.
+        await store.dead(job.id, outcome.detail ?? "spec_blocked");
         break;
       default:
         await store.fail(job.id, outcome.detail ?? "unknown outcome");

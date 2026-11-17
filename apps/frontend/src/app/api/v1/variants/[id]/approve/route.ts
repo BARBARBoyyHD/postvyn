@@ -12,6 +12,7 @@ import { z } from "zod";
 import { resolveContext } from "@/auth/context";
 import { approvals } from "@/db/approvals";
 import { fail, ok, toErrorResponse } from "@/lib/api";
+import { parseSlotAt, slotAtSchema } from "@/lib/approval-request";
 import { getBindings } from "@/lib/bindings";
 import type { WorkerEnv } from "@/lib/env";
 import { assertCan } from "@/lib/roles";
@@ -19,9 +20,10 @@ import { assertCan } from "@/lib/roles";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  /** Unix milliseconds. A string date is accepted too, because a curl call is a real client. */
-  slotAt: z.union([z.number().int().positive(), z.string().min(8)]),
+  slotAt: slotAtSchema,
   note: z.string().max(400).nullish(),
+  /** The content hash the operator was looking at; a mismatch voids the approval, not the content. */
+  hash: z.string().length(64).optional(),
 });
 
 export async function POST(request: Request, params: { params: Promise<{ id: string }> }) {
@@ -34,11 +36,8 @@ export async function POST(request: Request, params: { params: Promise<{ id: str
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return fail(422, "invalid_approval", parsed.error.flatten());
 
-  const slotAt =
-    typeof parsed.data.slotAt === "number" ? parsed.data.slotAt : Date.parse(parsed.data.slotAt);
-  if (!Number.isFinite(slotAt) || slotAt <= Date.now()) {
-    return fail(422, "slot_must_be_in_the_future");
-  }
+  const slotAt = parseSlotAt(parsed.data.slotAt);
+  if (slotAt === null) return fail(422, "slot_must_be_in_the_future");
 
   try {
     assertCan(resolved.ctx, "variant.approve");
@@ -47,10 +46,25 @@ export async function POST(request: Request, params: { params: Promise<{ id: str
     const result = await approvals(env).approve(resolved.ctx, id, {
       slotAt,
       note: parsed.data.note ?? null,
+      expectedHash: parsed.data.hash,
     });
-    if (!result) return fail(404, "not_found");
+    if (result.ok) return ok(result);
 
-    return ok(result);
+    const failure = result.error;
+    switch (failure) {
+      case "not_found":
+        return fail(404, "not_found");
+      case "spec_blocked":
+        return fail(422, "spec_blocked", { violations: result.violations });
+      case "reapproval_required":
+        return fail(409, "reapproval_required", { expected: result.expected, current: result.current });
+      case "internal_error":
+        return fail(500, "internal_error");
+    }
+
+    // A new error code that reaches here is a missing status, and the compiler says so before the client does.
+    const unhandled: never = failure;
+    return unhandled;
   } catch (error) {
     return toErrorResponse(error);
   }

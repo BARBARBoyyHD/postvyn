@@ -13,6 +13,7 @@ import { GET as getBrands, POST as postBrand } from "@/app/api/v1/brands/route";
 import { PATCH as patchBrand } from "@/app/api/v1/brands/[id]/route";
 import { GET as getQueue } from "@/app/api/v1/queue/route";
 import { GET as getPost } from "@/app/api/v1/posts/[id]/route";
+import { POST as postBatchApprove } from "@/app/api/v1/variants/approve/route";
 
 type Handler = (request: Request, context: { params: Promise<Record<string, string>> }) => Promise<Response>;
 
@@ -26,6 +27,12 @@ const PROTECTED: { name: string; handler: Handler; method: string; path: string 
     path: "/api/v1/brands/00000000-0000-4000-8000-000000000002",
   },
   { name: "GET /api/v1/queue", handler: getQueue as Handler, method: "GET", path: "/api/v1/queue" },
+  {
+    name: "POST /api/v1/variants/approve",
+    handler: postBatchApprove,
+    method: "POST",
+    path: "/api/v1/variants/approve",
+  },
   {
     name: "GET /api/v1/posts/:id",
     handler: getPost as Handler,

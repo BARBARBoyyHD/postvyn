@@ -12,7 +12,7 @@
  * platform exists. The stub can be told to publish, to park, or to fail ambiguously.
  */
 import { env } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runTick } from "@/db/tick";
 import { jobs, LEASE_MS, MAX_ATTEMPTS } from "@/db/jobs";
@@ -326,5 +326,70 @@ describe("the queue", () => {
     }>();
     expect(job?.state).toBe("awaiting_platform");
     expect(job?.last_error).toContain("M5");
+  });
+
+  it("records when the attempt started and finished", async () => {
+    await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
+
+    const startedAfter = Date.now();
+    await runTick(testEnv, {
+      publisher: stub({ state: "published", platformPostId: "x_7", url: null }),
+    });
+
+    const row = await env.DB.prepare("select attempt_started_at, attempt_finished_at from jobs").first<{
+      attempt_started_at: number;
+      attempt_finished_at: number;
+    }>();
+    expect(row?.attempt_started_at).toBeGreaterThanOrEqual(startedAfter);
+    expect(row?.attempt_finished_at).toBeGreaterThanOrEqual(row!.attempt_started_at);
+  });
+});
+
+/**
+ * "Nothing noisy" made concrete, because the phrase proves nothing on its own: the tick claims nothing,
+ * the report is empty, the row is byte-identical, the publisher is never called, and not one line is
+ * logged. A tick every five minutes must cost nothing when there is nothing to do.
+ */
+describe("a tick with no due work", () => {
+  beforeEach(async () => {
+    await seed();
+    await resetJobs();
+    await env.DB.prepare("update variants set caption = 'the caption' where id = ?").bind(VARIANT).run();
+  });
+
+  it("is a no-op that says nothing", async () => {
+    // Approved for tomorrow: queued, visible, and not due.
+    await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() + 3_600_000 });
+    const before = await env.DB.prepare("select * from jobs where id = (select id from jobs limit 1)").first<
+      Record<string, unknown>
+    >();
+    expect(before?.state).toBe("queued");
+
+    let calls = 0;
+    const publisher = stub(() => {
+      calls += 1;
+      return { state: "published", platformPostId: "x", url: null };
+    });
+
+    const noise = [vi.spyOn(console, "log"), vi.spyOn(console, "warn"), vi.spyOn(console, "error")].map(
+      (spy) => spy.mockImplementation(() => undefined),
+    );
+    // Prove the instrument before trusting it: a "nothing was logged" assertion over a broken spy passes.
+    console.log("probe");
+    expect(noise[0].mock.calls).toHaveLength(1);
+    for (const spy of noise) spy.mockClear();
+
+    const report = await runTick(testEnv, { publisher });
+
+    expect(report).toEqual({ reclaimed: [], dead: [], claimed: 0, outcomes: [] });
+    expect(calls).toBe(0);
+    expect(noise.flatMap((spy) => spy.mock.calls)).toEqual([]);
+
+    const after = await env.DB.prepare("select * from jobs where id = (select id from jobs limit 1)").first<
+      Record<string, unknown>
+    >();
+    expect(after).toEqual(before);
+
+    for (const spy of noise) spy.mockRestore();
   });
 });

@@ -236,6 +236,9 @@ export const jobs = sqliteTable(
     attempts: integer("attempts").notNull().default(0),
     runAfter: integer("run_after").notNull().default(nowMs),
     leaseUntil: integer("lease_until"),
+    /** The latest attempt's window; `attempts` counts them, `activity_log` keeps the history. */
+    attemptStartedAt: integer("attempt_started_at"),
+    attemptFinishedAt: integer("attempt_finished_at"),
     lastError: text("last_error"),
     createdAt: integer("created_at").notNull().default(nowMs),
     updatedAt: integer("updated_at").notNull().default(nowMs),

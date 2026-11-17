@@ -19,6 +19,7 @@ import { fail, ok, toErrorResponse } from "@/lib/api";
 import { getBindings } from "@/lib/bindings";
 import { repository } from "@/db/repository";
 import type { WorkerEnv } from "@/lib/env";
+import type { SpecIssue } from "@/lib/specs/validate";
 import { assertCan } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,7 @@ export async function POST(request: Request, params: { params: Promise<{ id: str
     const store = approvals(env);
     const now = Date.now();
     const approvalErrors: string[] = [];
+    const blocked: { variantId: string; platform: string; violations: SpecIssue[] }[] = [];
 
     for (const variant of detail.variants) {
       const current = await store.verify(variant.id);
@@ -67,8 +69,17 @@ export async function POST(request: Request, params: { params: Promise<{ id: str
       // The click approves the content that is stored right now — the same hash the publish path will
       // recompute a moment later.
       const granted = await store.approve(resolved.ctx, variant.id, { slotAt: now, note: "publish now" });
-      if (!granted) approvalErrors.push(`${variant.platform}: could not approve`);
+      if (granted.ok) continue;
+      if (granted.error === "spec_blocked") {
+        blocked.push({ variantId: variant.id, platform: variant.platform, violations: granted.violations });
+        continue;
+      }
+      approvalErrors.push(`${variant.platform}: could not approve (${granted.error})`);
     }
+
+    // A blocked variant is an edit waiting to happen, so the refusal names the rules it breaks — the
+    // same shape the approve endpoint answers with.
+    if (blocked.length > 0) return fail(422, "spec_blocked", { failures: blocked });
 
     if (approvalErrors.length > 0) {
       return fail(409, "approval_required", { failures: approvalErrors });
