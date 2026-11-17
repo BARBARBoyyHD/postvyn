@@ -10,6 +10,7 @@
  * row-level security D1 does not offer (ADR-014).
  */
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { effectiveChannelStatus } from "@/lib/channel-state";
 import type { WorkspaceContext } from "@/lib/context";
 import type { Bindings } from "./bindings";
 import { createDb } from "./client";
@@ -83,10 +84,15 @@ export function repository(env: Bindings) {
      * Channels carry no `workspace_id` — tenancy reaches them through their brand. The join is not
      * an optimisation, it is the only correct way to scope this table; a plain `select * from
      * channels` would leak every tenant's channels.
+     *
+     * `status` is derived, not read: a channel with no credential row is `reauth_required` however
+     * the column reads, so an imported channel cannot present as connected (spec: platform-connections
+     * §"An imported, unconnected channel is not active"). The credential row itself is never selected
+     * here — the join only asks whether one exists.
      */
     async listChannels(input: WorkspaceContext) {
       const ctx = requireCtx(input);
-      return db
+      const rows = await db
         .select({
           id: s.channels.id,
           brandId: s.channels.brandId,
@@ -94,11 +100,15 @@ export function repository(env: Bindings) {
           accountRef: s.channels.accountRef,
           label: s.channels.label,
           status: s.channels.status,
+          hasCredentials: sql<number>`${s.channelCredentials.channelId} is not null`,
         })
         .from(s.channels)
         .innerJoin(s.brands, eq(s.channels.brandId, s.brands.id))
+        .leftJoin(s.channelCredentials, eq(s.channelCredentials.channelId, s.channels.id))
         .where(eq(s.brands.workspaceId, ctx.workspaceId))
         .orderBy(s.channels.platform);
+
+      return rows.map(withEffectiveStatus);
     },
 
     async getChannelById(input: WorkspaceContext, id: string) {
@@ -111,12 +121,14 @@ export function repository(env: Bindings) {
           accountRef: s.channels.accountRef,
           label: s.channels.label,
           status: s.channels.status,
+          hasCredentials: sql<number>`${s.channelCredentials.channelId} is not null`,
         })
         .from(s.channels)
         .innerJoin(s.brands, eq(s.channels.brandId, s.brands.id))
+        .leftJoin(s.channelCredentials, eq(s.channelCredentials.channelId, s.channels.id))
         .where(and(eq(s.channels.id, id), eq(s.brands.workspaceId, ctx.workspaceId)))
         .limit(1);
-      return row ?? null;
+      return row ? withEffectiveStatus(row) : null;
     },
 
     // ── posts ─────────────────────────────────────────────────────────────────────────────────
@@ -553,6 +565,31 @@ export function repository(env: Bindings) {
         nextCursor: hasMore ? encodeCursor(posts[posts.length - 1]) : null,
       };
       },
+  };
+}
+
+/**
+ * Strip the credential-existence flag and answer with the state the board should show.
+ *
+ * The flag never leaves this function: whether a channel holds ciphertext is useful inside the query
+ * and nobody's business in a response.
+ */
+function withEffectiveStatus(row: {
+  id: string;
+  brandId: string;
+  platform: s.Channel["platform"];
+  accountRef: string;
+  label: string | null;
+  status: s.Channel["status"];
+  hasCredentials: number;
+}) {
+  return {
+    id: row.id,
+    brandId: row.brandId,
+    platform: row.platform,
+    accountRef: row.accountRef,
+    label: row.label,
+    status: effectiveChannelStatus(row.status, row.hasCredentials !== 0),
   };
 }
 

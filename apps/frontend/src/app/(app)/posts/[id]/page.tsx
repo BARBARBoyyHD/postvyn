@@ -29,6 +29,16 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   const mediaById = new Map(media.map((row) => [row.id, row]));
   const platformByVariant = new Map(variants.map((variant) => [variant.id, variant.platform]));
 
+  // The upload button names every destination it is about to send to: the confirmation is compared
+  // against each variant's channel, so a wrong channel is a refusal rather than a surprise.
+  const channelsById = new Map(
+    (await repository(env).listChannels(resolved.ctx)).map((channel) => [channel.id, channel]),
+  );
+  const publishTargets = variants.flatMap((variant) => {
+    const channel = channelsById.get(variant.channelId);
+    return channel ? [{ platform: channel.platform, account: channel.accountRef }] : [];
+  });
+
   // `uncertain` is not a state to badge: the platform may have accepted the post. It goes above the
   // fold, in words, before any control that might send it again.
   const uncertainPlatforms = [
@@ -85,6 +95,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
           <PublishNowButton
             postId={post.id}
             variantCount={variants.length}
+            targets={publishTargets}
             disabled={post.status === "published"}
           />
         </div>

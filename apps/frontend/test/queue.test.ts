@@ -17,11 +17,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runTick } from "@/db/tick";
 import { jobs, LEASE_MS, MAX_ATTEMPTS } from "@/db/jobs";
 import { approvals } from "@/db/approvals";
+import { credentialStore } from "@/db/credentials";
 import { hashParts, variantHash } from "@/lib/approval";
-import type { Publisher, PublishInput, PublishOutcome } from "@/publishers/port";
+import type { Publisher, PublishInput, PublishResult } from "@/publishers/port";
 import type { WorkerEnv } from "@/lib/env";
 
-const testEnv = env as unknown as WorkerEnv;
+const testEnv: WorkerEnv = {
+  DB: env.DB,
+  TOKEN_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+};
 
 const WS = "ws-m4";
 const BRAND = "brand-m4";
@@ -32,11 +36,17 @@ const USER = "user-m4";
 
 const ctx = { workspaceId: WS, userId: USER, role: "owner" as const };
 
-function stub(outcome: PublishOutcome | ((input: PublishInput) => PublishOutcome)): Publisher {
+function stub(outcome: PublishResult | ((input: PublishInput) => PublishResult)): Publisher {
   return {
     platform: "x",
+    async preview() {
+      return { calls: [], estimatedCostUsd: null };
+    },
     async publish(input) {
       return typeof outcome === "function" ? outcome(input) : outcome;
+    },
+    async verify(result) {
+      return result;
     },
   };
 }
@@ -68,6 +78,15 @@ async function seed() {
   )
     .bind(VARIANT, POST, CHANNEL, now, now)
     .run();
+
+  // The publish path refuses a channel it cannot authenticate as (M5), so the queue's happy path
+  // needs real credentials — encrypted with a fixed test key, never a real one.
+  await credentialStore(testEnv).connect(ctx, {
+    brandId: BRAND,
+    platform: "x",
+    accountRef: "m4",
+    credentials: { accessToken: "m4-test-token" },
+  });
 }
 
 /** Clear only the tables this file writes; activity_log is append-only and must not be deleted. */
@@ -156,7 +175,7 @@ describe("the queue", () => {
     let calls = 0;
     const publisher = stub(() => {
       calls += 1;
-      return { state: "published", platformPostId: "x_1", url: "https://x.test/1" };
+      return { status: "published", platformPostId: "x_1", permalink: "https://x.test/1" };
     });
 
     // claimed serially, as two ticks would: the second finds nothing because the first took it
@@ -170,7 +189,7 @@ describe("the queue", () => {
 
   it("does not claim a job whose slot is in the future", async () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() + 3_600_000 });
-    const report = await runTick(testEnv, { publisher: stub({ state: "published", platformPostId: "x", url: null }) });
+    const report = await runTick(testEnv, { publisher: stub({ status: "published", platformPostId: "x", permalink: null }) });
     expect(report.claimed).toBe(0);
   });
 
@@ -182,7 +201,7 @@ describe("the queue", () => {
     const report = await runTick(testEnv, {
       publisher: stub(() => {
         calls += 1;
-        return { state: "published", platformPostId: "x", url: null };
+        return { status: "published", platformPostId: "x", permalink: null };
       }),
     });
 
@@ -199,7 +218,7 @@ describe("the queue", () => {
   it("records a successful publish and closes the post", async () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
     await runTick(testEnv, {
-      publisher: stub({ state: "published", platformPostId: "x_9", url: "https://x.test/9" }),
+      publisher: stub({ status: "published", platformPostId: "x_9", permalink: "https://x.test/9" }),
     });
 
     const post = await env.DB.prepare("select status from posts where id = ?").bind(POST).first<{ status: string }>();
@@ -215,7 +234,7 @@ describe("the queue", () => {
   it("parks when the platform is still working", async () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
     await runTick(testEnv, {
-      publisher: stub({ state: "awaiting_platform", reason: "container not ready", resumeAfterMs: 300_000 }),
+      publisher: stub({ status: "awaiting_platform", detail: "container not ready", resume: { afterMs: 300_000 } }),
     });
 
     const job = await env.DB.prepare("select state, attempts, last_error from jobs").first<{
@@ -234,7 +253,7 @@ describe("the queue", () => {
     const store = jobs(testEnv);
 
     const first = await runTick(testEnv, {
-      publisher: stub({ state: "failed", error: "boom", ambiguous: false }),
+      publisher: stub({ status: "failed", platformError: { code: "x_500", message: "boom" } }),
     });
     expect(first.outcomes[0].verdict).toBe("failed");
 
@@ -250,7 +269,7 @@ describe("the queue", () => {
     // bring it forward and fail again until the limit
     for (let attempt = 2; attempt <= MAX_ATTEMPTS; attempt += 1) {
       await env.DB.prepare("update jobs set run_after = ? where state = 'queued'").bind(Date.now() - 1).run();
-      await runTick(testEnv, { publisher: stub({ state: "failed", error: "boom", ambiguous: false }) });
+      await runTick(testEnv, { publisher: stub({ status: "failed", platformError: { code: "x_500", message: "boom" } }) });
     }
 
     const final = await env.DB.prepare("select state, attempts from jobs").first<{ state: string; attempts: number }>();
@@ -262,7 +281,7 @@ describe("the queue", () => {
   it("treats an ambiguous failure as uncertain and never retries it", async () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
     await runTick(testEnv, {
-      publisher: stub({ state: "failed", error: "socket closed after send", ambiguous: true }),
+      publisher: stub({ status: "uncertain", detail: "socket closed after send" }),
     });
 
     const job = await env.DB.prepare("select state, last_error from jobs").first<{
@@ -293,7 +312,7 @@ describe("the queue", () => {
     await approvals(testEnv).approve(ctx, VARIANT, { slotAt: Date.now() - 1_000 });
 
     const report = await runTick(testEnv, {
-      publisher: stub({ state: "published", platformPostId: "x", url: null }),
+      publisher: stub({ status: "published", platformPostId: "x", permalink: null }),
       globalEnabled: false,
     });
     expect(report.claimed).toBe(0);
@@ -304,13 +323,13 @@ describe("the queue", () => {
     // and the workspace switch is checked inside the claim, not by the caller
     await env.DB.prepare("update workspaces set publishing_enabled = 0 where id = ?").bind(WS).run();
     const withWorkspaceOff = await runTick(testEnv, {
-      publisher: stub({ state: "published", platformPostId: "x", url: null }),
+      publisher: stub({ status: "published", platformPostId: "x", permalink: null }),
     });
     expect(withWorkspaceOff.claimed).toBe(0);
 
     await env.DB.prepare("update workspaces set publishing_enabled = 1 where id = ?").bind(WS).run();
     const resumed = await runTick(testEnv, {
-      publisher: stub({ state: "published", platformPostId: "x", url: null }),
+      publisher: stub({ status: "published", platformPostId: "x", permalink: null }),
     });
     expect(resumed.claimed).toBe(1);
   });
@@ -333,7 +352,7 @@ describe("the queue", () => {
 
     const startedAfter = Date.now();
     await runTick(testEnv, {
-      publisher: stub({ state: "published", platformPostId: "x_7", url: null }),
+      publisher: stub({ status: "published", platformPostId: "x_7", permalink: null }),
     });
 
     const row = await env.DB.prepare("select attempt_started_at, attempt_finished_at from jobs").first<{
@@ -368,7 +387,7 @@ describe("a tick with no due work", () => {
     let calls = 0;
     const publisher = stub(() => {
       calls += 1;
-      return { state: "published", platformPostId: "x", url: null };
+      return { status: "published", platformPostId: "x", permalink: null };
     });
 
     const noise = [vi.spyOn(console, "log"), vi.spyOn(console, "warn"), vi.spyOn(console, "error")].map(

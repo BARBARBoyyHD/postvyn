@@ -11,7 +11,9 @@ import { describe, expect, it } from "vitest";
 
 import { GET as getBrands, POST as postBrand } from "@/app/api/v1/brands/route";
 import { PATCH as patchBrand } from "@/app/api/v1/brands/[id]/route";
+import { DELETE as deleteChannel, GET as getChannels, POST as postChannel } from "@/app/api/v1/channels/route";
 import { GET as getDueJobs } from "@/app/api/v1/jobs/due/route";
+import { POST as postPublish } from "@/app/api/v1/posts/[id]/publish/route";
 import { GET as getQueue } from "@/app/api/v1/queue/route";
 import { GET as getPost } from "@/app/api/v1/posts/[id]/route";
 import { POST as postBatchApprove } from "@/app/api/v1/variants/approve/route";
@@ -45,6 +47,25 @@ const PROTECTED: { name: string; handler: Handler; method: string; path: string 
     handler: getPost as Handler,
     method: "GET",
     path: "/api/v1/posts/post_zavron_2026-10-about-zavron",
+  },
+  {
+    name: "POST /api/v1/posts/:id/publish",
+    handler: postPublish as Handler,
+    method: "POST",
+    path: "/api/v1/posts/post_zavron_2026-10-about-zavron/publish",
+  },
+  { name: "GET /api/v1/channels", handler: getChannels as Handler, method: "GET", path: "/api/v1/channels" },
+  {
+    name: "POST /api/v1/channels",
+    handler: postChannel as Handler,
+    method: "POST",
+    path: "/api/v1/channels",
+  },
+  {
+    name: "DELETE /api/v1/channels",
+    handler: deleteChannel as Handler,
+    method: "DELETE",
+    path: "/api/v1/channels?id=00000000-0000-4000-8000-0000000000c1",
   },
 ];
 

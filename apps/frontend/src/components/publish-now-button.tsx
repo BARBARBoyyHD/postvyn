@@ -8,6 +8,9 @@
  *
  * The result is reported per platform, including the honest `not_connected` while an adapter is missing —
  * a button that said "done" when nothing was posted would be worse than no button.
+ *
+ * The click names every destination (platform + account); the server refuses a confirmation that does
+ * not match the variant's channel instead of quietly sending somewhere else.
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -22,10 +25,13 @@ interface Outcome {
 export function PublishNowButton({
   postId,
   variantCount,
+  targets,
   disabled,
 }: {
   postId: string;
   variantCount: number;
+  /** Every platform account this button is about to send to — the server refuses a mismatch. */
+  targets: { platform: string; account: string }[];
   disabled?: boolean;
 }) {
   const router = useRouter();
@@ -41,7 +47,7 @@ export function PublishNowButton({
     const response = await fetch(`/api/v1/posts/${postId}/publish`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ approveMissing: true }),
+      body: JSON.stringify({ approveMissing: true, confirm: targets }),
     });
     const body = (await response.json().catch(() => ({}))) as {
       ok?: boolean;

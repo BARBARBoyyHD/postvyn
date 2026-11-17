@@ -1,17 +1,17 @@
 ## 1. Credentials
 
-- [ ] 1.1 Implement `encrypt`/`decrypt` with AES-256-GCM over WebCrypto, channel id as additional authenticated data, `key_version` stored per row
-- [ ] 1.2 `POST /api/v1/channels` and `DELETE` for connect/disconnect, owner-only
-- [ ] 1.3 Never return a token or ciphertext from any endpoint; tests assert the absence
-- [ ] 1.4 Write a re-encryption pass for `key_version` rotation, with a per-row failure report
-- [ ] 1.5 Set channel state from credential health: `active`, `reauth_required`, `disabled`
+- [x] 1.1 Implement `encrypt`/`decrypt` with AES-256-GCM over WebCrypto, channel id as additional authenticated data, `key_version` stored per row — `src/lib/crypto.ts` + `requireTokenEncryptionKey()` in `src/lib/env.ts`; key is `TOKEN_ENCRYPTION_KEY` (32 bytes base64), version from `TOKEN_ENCRYPTION_KEY_VERSION` (default 1); tamper/AAD/wrong-key covered in `test/crypto.test.ts`
+- [x] 1.2 `POST /api/v1/channels` and `DELETE` for connect/disconnect, owner-only — `src/app/api/v1/channels/route.ts`; connect upserts credentials on an existing (brand, platform, accountRef) so reconnect is the same call; DELETE clears the credential row and sets `disabled`, never deletes the channel
+- [x] 1.3 Never return a token or ciphertext from any endpoint; tests assert the absence — connect/list/detail shapes scanned for plaintext, ciphertext and field names in `test/credentials.test.ts`; every channels route answers `401` in `test/routes.test.ts`
+- [x] 1.4 Write a re-encryption pass for `key_version` rotation, with a per-row failure report — `rotateCredentials(env, {from, to})` in `src/db/credentials.ts` returns `{ok, rotated, failed:[{channelId, reason}]}`; one unreadable row is reported and the rest still rotate (tested)
+- [x] 1.5 Set channel state from credential health: `active`, `reauth_required`, `disabled` — `channels.status` already existed (no migration needed); reads derive the state (`effectiveChannelStatus`, left join on credential existence) so an imported channel is never `active`, and a failed decrypt at publish time flips the channel to `reauth_required` with an audit row
 
 ## 2. Publisher interface
 
-- [ ] 2.1 Define the port: `preview(variant)`, `publish(variant)`, `verify(result)` and the result shape
-- [ ] 2.2 Dry run reuses the real path with the network removed, and lists the calls it would make
-- [ ] 2.3 Confirmation must name platform and account; a mismatch with the variant's channel is refused
-- [ ] 2.4 Record the platform's own error code and message verbatim on failure
+- [x] 2.1 Define the port: `preview(variant)`, `publish(variant)`, `verify(result)` and the result shape — `src/publishers/port.ts`: `PublishResult` is `published | awaiting_platform | uncertain | failed | not_connected`, failures carry `{code, message}`; `src/db/tick.ts` calls `verify()` on any success before storing `published` (non-negotiable 4)
+- [x] 2.2 Dry run reuses the real path with the network removed, and lists the calls it would make — `src/publishers/transport.ts` (`liveTransport` / `recordingTransport`) + `previewFlow()`; the test double proves preview and publish emit the same first call and the dry run makes no request. Listing stops at the first send, because a later call's URL depends on the platform's answer
+- [x] 2.3 Confirmation must name platform and account; a mismatch with the variant's channel is refused — `confirmTargets()` in `src/lib/publish-confirm.ts`, enforced by `POST /api/v1/posts/:id/publish` (`422 confirmation_mismatch`, before any approval); the upload button now sends one confirmation per variant's channel
+- [x] 2.4 Record the platform's own error code and message verbatim on failure — `publish_results.raw` holds `{code, message}` as received, `jobs.last_error` carries them on the failing attempt; asserted in `test/publishing.test.ts`
 
 ## 3. Threads adapter
 

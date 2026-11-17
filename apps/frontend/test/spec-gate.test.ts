@@ -12,13 +12,17 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { approvals } from "@/db/approvals";
+import { credentialStore } from "@/db/credentials";
 import { jobs } from "@/db/jobs";
 import { runTick } from "@/db/tick";
 import { hashParts } from "@/lib/approval";
 import type { Publisher } from "@/publishers/port";
 import type { WorkerEnv } from "@/lib/env";
 
-const testEnv = env as unknown as WorkerEnv;
+const testEnv: WorkerEnv = {
+  DB: env.DB,
+  TOKEN_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+};
 
 const WS = "ws-gate";
 const USER = "user-gate";
@@ -54,6 +58,15 @@ async function seedVariant(variantId: string, caption: string, hashtags: string)
       "insert or ignore into variants (id, post_id, channel_id, caption, hashtags, media_ids, spec_state, created_at, updated_at) values (?, ?, ?, ?, ?, '[]', 'ok', ?, ?)",
     ).bind(variantId, postId, channelId, caption, hashtags, now, now),
   ]);
+
+  // A publish now refuses a channel without readable credentials (M5), so the gate's fixtures connect.
+  const connected = await credentialStore(testEnv).connect(ctx, {
+    brandId,
+    platform: "x",
+    accountRef: variantId,
+    credentials: { accessToken: "gate-token" },
+  });
+  if (!connected.ok) throw new Error(`seed: connect failed (${connected.reason})`);
 }
 
 async function seed() {
@@ -83,9 +96,15 @@ function countingPublisher(): { publisher: Publisher; calls: () => number } {
     calls: () => calls,
     publisher: {
       platform: "x",
+      async preview() {
+        return { calls: [], estimatedCostUsd: null };
+      },
       async publish() {
         calls += 1;
-        return { state: "published", platformPostId: "x_1", url: "https://x.test/1" };
+        return { status: "published", platformPostId: "x_1", permalink: "https://x.test/1" };
+      },
+      async verify(result) {
+        return result;
       },
     },
   };
