@@ -23,9 +23,11 @@
     {
       "binding": "DB",
       "database_name": "postvyn-db",
-      // Placeholder — replace with the id from `wrangler d1 create postvyn-db` before deploying.
-      // Harmless locally, where D1 state is a file under .wrangler/.
       "database_id": "fb0beba2-4cc0-46e6-a736-a158387230e2",
+      // Per-binding remote proxy (wrangler ≥4, GA — no experimental flag): local dev talks to the
+      // DEPLOYED database while the Worker itself still runs in workerd on this machine, so HMR and
+      // `.dev.vars` keep working. `remote: false` switches back to the local `.wrangler/` file.
+      "remote": true,
       "migrations_dir": "db/migrations"
     }
   ],

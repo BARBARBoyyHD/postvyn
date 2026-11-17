@@ -28,7 +28,8 @@ here and there should never be one.
 ## Run
 
 ```bash
-pnpm dev           # next dev today, vite dev once `vinext init` has run
+pnpm dev           # vinext dev on :3001 — real Worker runtime, real bindings
+pnpm dev:next      # plain `next dev` — no bindings, so every D1 route answers 503
 pnpm build
 pnpm typecheck
 pnpm lint
@@ -41,6 +42,15 @@ pnpm exec wrangler dev
 pnpm exec wrangler d1 migrations apply postvyn-db --local
 pnpm exec vinext check
 ```
+
+## Which database dev talks to
+
+`wrangler.jsonc` sets `"remote": true` on the D1 binding: `pnpm dev` runs workerd on this machine
+(HMR, `.dev.vars`) but every query goes to the **deployed** `postvyn-db`. A fresh clone therefore
+needs two things once — `pnpm exec wrangler login` and `pnpm db:migrate:remote && pnpm db:seed:remote`
+— and needs them before sign-up will work at all. Set `"remote": false` to go back to the
+`.wrangler/` file, and remember it is then a different, empty database. R2 stays local: uploads
+write to `.wrangler/` state, not the deployed bucket.
 
 ## Two traps worth knowing before they cost an afternoon
 
@@ -69,8 +79,8 @@ Every required variable is listed in `.env.example` with where its value comes f
 matter more than the list:
 
 **Nothing secret lives in `wrangler.jsonc`.** It declares binding *names* and non-secret vars only
-(`PUBLISHING_ENABLED=false`, `R2_PUBLIC_BASE`). Real values go in `.env.local` for `pnpm dev` and
-`.dev.vars` for `wrangler dev`; in production they are set with the platform's secret mechanism:
+(`PUBLISHING_ENABLED=false`, `R2_PUBLIC_BASE`). Real values go in `.env.local` for `pnpm dev:next` and
+`.dev.vars` for `pnpm dev`/`wrangler dev`; in production they are set with the platform's secret mechanism:
 
 ```bash
 pnpm exec wrangler secret put BETTER_AUTH_SECRET
