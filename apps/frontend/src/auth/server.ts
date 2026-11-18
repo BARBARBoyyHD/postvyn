@@ -33,8 +33,9 @@ export function createAuth(env: WorkerEnv) {
     baseURL,
 
     /**
-     * Both dev ports, because `pnpm dev` runs Next on 3000 and `pnpm dev:vinext` runs Vite on 3001 —
-     * and Better Auth rejects a request whose Origin it does not trust (MISSING_OR_NULL_ORIGIN).
+     * Both dev ports, because `pnpm dev` runs the Worker (vite) on 3000 and `pnpm dev:next` runs plain
+     * Next on 3001 — and Better Auth rejects a request whose Origin it does not trust
+     * (MISSING_OR_NULL_ORIGIN).
      */
     trustedOrigins: [baseURL, "http://localhost:3000", "http://localhost:3001"],
 

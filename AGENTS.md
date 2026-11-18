@@ -273,8 +273,8 @@ When they land, they land in `src/lib` first; tests bolted onto churn are churn 
 ```bash
 # run from apps/frontend — it is the project root; the repo root has no package.json
 pnpm install
-pnpm dev                       # vinext dev on :3001 — Worker runtime; D1 binding is REMOTE
-pnpm dev:next                  # plain `next dev`: no bindings, D1 routes answer 503
+pnpm dev                       # vinext dev on :3000 — Worker runtime; D1 binding is REMOTE
+pnpm dev:next                  # plain `next dev` on :3001: no bindings, D1 routes answer 503
 pnpm typecheck                 # next typegen && tsc --noEmit — typegen is mandatory in Next 16
 pnpm lint
 pnpm db:migrate:remote         # the database `pnpm dev` actually reads (wrangler.jsonc: remote)

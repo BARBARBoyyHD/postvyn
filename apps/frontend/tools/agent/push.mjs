@@ -28,7 +28,7 @@ const flag = (name, fallback = null) => {
   return index === -1 ? fallback : (args[index + 1] ?? fallback);
 };
 
-const base = (flag("base") ?? process.env.POSTVYN_URL ?? "http://localhost:3001").replace(/\/$/, "");
+const base = (flag("base") ?? process.env.POSTVYN_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const token = flag("token") ?? process.env.POSTVYN_TOKEN ?? "";
 const file = flag("file");
 const platform = flag("platform", "tiktok");

@@ -28,12 +28,15 @@ here and there should never be one.
 ## Run
 
 ```bash
-pnpm dev           # vinext dev on :3001 — real Worker runtime, real bindings
-pnpm dev:next      # plain `next dev` — no bindings, so every D1 route answers 503
+pnpm dev           # vinext dev on :3000 — real Worker runtime, real bindings
+pnpm dev:next      # plain `next dev` on :3001 — no bindings, so every D1 route answers 503
 pnpm build
 pnpm typecheck
 pnpm lint
 ```
+
+`:3000` is canonical and `--strictPort` makes `pnpm dev` exit if something else holds it — close that
+program, or run `pnpm exec vite dev --port 3002` for a one-off.
 
 Scope-specific:
 
