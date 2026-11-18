@@ -1,4 +1,12 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * The dark variant is scoped to a `.dark` class this app never sets: the chrome is dark by identity,
+ * not by preference, so shadcn's `dark:` tweaks stay inert instead of following the OS.
+ */
+@custom-variant dark (&:is(.dark *));
 
 /*
  * Two token layers, on purpose (docs/naming + m1-identity design decision 8):
@@ -33,6 +41,47 @@
   --color-brand-bg1: var(--color-zavron-bg1);
 
   color-scheme: dark;
+
+  /*
+   * shadcn/ui names, resolved onto the Zavron palette. One identity, not a second theme layer:
+   * every value below either points at a --color-zavron-* token or is a warm neutral derived from it.
+   */
+  --background: var(--color-zavron-bg0);
+  --foreground: var(--color-zavron-ink);
+  --card: #141413;
+  --card-foreground: var(--color-zavron-ink);
+  --popover: #161615;
+  --popover-foreground: var(--color-zavron-ink);
+  --primary: var(--color-zavron-accent);
+  --primary-foreground: #0d0d0d;
+  --secondary: var(--color-zavron-bg1);
+  --secondary-foreground: var(--color-zavron-ink);
+  --muted: var(--color-zavron-bg1);
+  --muted-foreground: var(--color-zavron-muted);
+  --accent: color-mix(in oklab, var(--color-zavron-accent) 14%, var(--color-zavron-bg1));
+  --accent-foreground: var(--color-zavron-ink);
+  --destructive: #f43f5e;
+  --border: var(--color-zavron-line);
+  --input: var(--color-zavron-line);
+  --ring: var(--color-zavron-accent);
+
+  --chart-1: var(--color-zavron-accent);
+  --chart-2: var(--color-zavron-accent-soft);
+  --chart-3: var(--color-zavron-muted);
+  --chart-4: var(--color-zavron-line);
+  --chart-5: var(--color-zavron-bg1);
+
+  /* Matches the app's rounded-lg (8px) so shadcn radii do not reshape existing cards. */
+  --radius: 0.5rem;
+
+  --sidebar: var(--color-zavron-bg0);
+  --sidebar-foreground: var(--color-zavron-ink);
+  --sidebar-primary: var(--color-zavron-accent);
+  --sidebar-primary-foreground: #0d0d0d;
+  --sidebar-accent: color-mix(in oklab, var(--color-zavron-accent) 16%, #171412);
+  --sidebar-accent-foreground: var(--color-zavron-ink);
+  --sidebar-border: var(--color-zavron-line);
+  --sidebar-ring: var(--color-zavron-accent);
 }
 
 html {
@@ -56,4 +105,58 @@ body {
   outline: 2px solid var(--color-zavron-accent);
   outline-offset: 3px;
   border-radius: 4px;
+}
+
+@theme inline {
+  --font-heading: var(--font-geist-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

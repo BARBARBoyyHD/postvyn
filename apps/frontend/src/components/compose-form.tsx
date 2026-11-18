@@ -81,7 +81,7 @@ export function ComposeForm({ brandId, channels }: { brandId: string; channels: 
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="font-mono text-[10px] uppercase tracking-[0.14em] text-zavron-muted">
             format

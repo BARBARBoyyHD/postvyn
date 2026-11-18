@@ -6,15 +6,20 @@
  * every route underneath it.
  *
  * The chrome is Zavron (`--color-zavron-*`); the active brand paints the content surfaces through
- * `--color-brand-*`, set here so a page never has to know how to read `brand.json`.
+ * `--color-brand-*`, set here so a page never has to know how to read `brand.json`. The navigation
+ * itself is client (it highlights the current route), so every piece of data it needs is passed down.
+ *
+ * shadcn's `SidebarInset` is a `<main>`, and every page already renders its own `<main>` — nesting
+ * them would be a document with two mains. The equivalent flex column stands in.
  */
-import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { currentRequest } from "@/auth/current";
-import { BrandSwitcher } from "@/components/brand-switcher";
-import { PublishingState } from "@/components/publishing-state";
-import { SignOutButton } from "@/components/sign-out-button";
+import { AppMobileBar } from "@/components/app-mobile-bar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { repository } from "@/db/repository";
 
 export const dynamic = "force-dynamic";
@@ -44,72 +49,39 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // One scoped row for the chrome: the chip must reflect the workspace switch, not just the deploy.
   const settings = await repository(env).getWorkspaceSettings(resolved.ctx);
 
+  // Read server-side so the first paint matches the last click; the provider writes it on toggle.
+  const sidebarOpen = (await cookies()).get("sidebar_state")?.value !== "false";
+
   return (
     <div
-      className="flex min-h-screen flex-col bg-zavron-bg0"
+      className="min-h-svh bg-zavron-bg0"
       style={
         {
           "--color-brand-accent": accent ?? "var(--color-zavron-accent)",
         } as React.CSSProperties
       }
     >
-      <header className="sticky top-0 z-20 border-b border-zavron-line bg-zavron-bg0/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-6 px-5">
-          <Link href="/board" className="flex items-baseline gap-2">
-            <span className="text-sm font-semibold tracking-tight text-zavron-ink">Postvyn</span>
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-zavron-accent" />
-          </Link>
+      <TooltipProvider>
+        <SidebarProvider defaultOpen={sidebarOpen}>
+          <AppSidebar
+            brands={resolved.brands ?? []}
+            activeBrandId={resolved.activeBrandId}
+            role={resolved.ctx.role}
+            globalEnabled={env.PUBLISHING_ENABLED === "true"}
+            workspaceEnabled={Boolean(settings?.publishingEnabled)}
+          />
 
-          <nav className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.18em]">
-            <Link href="/board" className="text-zavron-muted transition-colors hover:text-zavron-ink">
-              board
-            </Link>
-            <Link href="/review" className="text-zavron-muted transition-colors hover:text-zavron-ink">
-              review
-            </Link>
-            <Link href="/compose" className="text-zavron-muted transition-colors hover:text-zavron-ink">
-              compose
-            </Link>
-            <Link href="/intake" className="text-zavron-muted transition-colors hover:text-zavron-ink">
-              intake
-            </Link>
-            <Link href="/brands" className="text-zavron-muted transition-colors hover:text-zavron-ink">
-              brands
-            </Link>
-            <Link
-              href="/channels"
-              className="text-zavron-muted transition-colors hover:text-zavron-ink"
-            >
-              channels
-            </Link>
-            <Link href="/health" className="text-zavron-muted transition-colors hover:text-zavron-ink">
-              health
-            </Link>
-          </nav>
-
-          <div className="ml-auto flex items-center gap-5">
-            <span className="hidden sm:inline">
-              <PublishingState
-                globalEnabled={env.PUBLISHING_ENABLED === "true"}
-                workspaceEnabled={Boolean(settings?.publishingEnabled)}
-              />
-            </span>
-            <BrandSwitcher brands={resolved.brands ?? []} activeBrandId={resolved.activeBrandId} />
-            <span className="hidden font-mono text-[11px] uppercase tracking-[0.18em] text-zavron-muted sm:inline">
-              {resolved.ctx.role}
-            </span>
-            <SignOutButton />
+          <div className="flex min-w-0 flex-1 flex-col bg-zavron-bg0">
+            <AppMobileBar brands={resolved.brands ?? []} activeBrandId={resolved.activeBrandId} />
+            <div className="min-w-0 flex-1">{children}</div>
+            <footer className="border-t border-zavron-line px-5 py-3">
+              <p className="mx-auto max-w-[1400px] font-mono text-[10px] uppercase tracking-[0.18em] text-zavron-muted">
+                Postvyn · built by Zavron
+              </p>
+            </footer>
           </div>
-        </div>
-      </header>
-
-      <div className="flex-1">{children}</div>
-
-      <footer className="border-t border-zavron-line px-5 py-4">
-        <p className="mx-auto max-w-[1400px] font-mono text-[10px] uppercase tracking-[0.18em] text-zavron-muted">
-          Postvyn · built by Zavron
-        </p>
-      </footer>
+        </SidebarProvider>
+      </TooltipProvider>
     </div>
   );
 }
