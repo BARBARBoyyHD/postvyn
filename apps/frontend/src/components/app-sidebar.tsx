@@ -40,17 +40,17 @@ import {
 } from "@/components/ui/sidebar";
 
 const LINKS = [
-  { href: "/board", label: "board", icon: LayoutDashboard },
-  { href: "/review", label: "review", icon: ClipboardCheck },
-  { href: "/compose", label: "compose", icon: PenLine },
-  { href: "/intake", label: "intake", icon: Inbox },
-  { href: "/brands", label: "brands", icon: Tags },
-  { href: "/channels", label: "channels", icon: Cable },
-  { href: "/health", label: "health", icon: Activity },
+  { href: "/board", label: "the board", icon: LayoutDashboard },
+  { href: "/review", label: "needs you", icon: ClipboardCheck },
+  { href: "/compose", label: "make a post", icon: PenLine },
+  { href: "/intake", label: "drop stuff", icon: Inbox },
+  { href: "/brands", label: "your brands", icon: Tags },
+  { href: "/channels", label: "connections", icon: Cable },
+  { href: "/health", label: "status", icon: Activity },
 ] as const;
 
 const ACTIVE_ITEM =
-  "font-mono text-[11px] uppercase tracking-[0.14em] data-[active=true]:bg-linear-to-r data-[active=true]:from-zavron-accent/25 data-[active=true]:via-zavron-accent/10 data-[active=true]:to-transparent data-[active=true]:text-zavron-ink";
+  "font-mono text-[11px] tracking-[0.14em] data-[active=true]:bg-linear-to-r data-[active=true]:from-zavron-accent/25 data-[active=true]:via-zavron-accent/10 data-[active=true]:to-transparent data-[active=true]:text-zavron-ink";
 
 interface AppSidebarProps {
   brands: { id: string; slug: string; name: string; colors: string | null }[];
@@ -96,8 +96,8 @@ export function AppSidebar({
 
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel className="font-mono text-[10px] uppercase tracking-[0.18em] text-zavron-muted">
-              workspace
+            <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.18em] text-zavron-muted">
+              your workspace
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
