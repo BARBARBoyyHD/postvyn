@@ -2,18 +2,20 @@
  * Channels: which accounts this workspace can publish to, and how to connect one.
  *
  * A channel is only `active` when its credentials work, so the state is the point of the screen — a
- * token rejected by the platform reads "reconnect required", not a blank row. Connecting is
- * owner-only (`channel.connect`); the form is not drawn for anyone else.
+ * token rejected by the platform reads "reconnect required", not a blank row. Connecting and
+ * disconnecting are owner-only (`channel.connect` / `channel.disconnect`); the form is not drawn for
+ * anyone else.
  *
- * YouTube is the platform this screen connects by hand: its three OAuth2 values are created in the
- * Google Cloud console and pasted in (no in-app Google redirect — design decision 1). Instagram and
- * Threads credentials are minted elsewhere (OAuth), and TikTok has no credential here by design.
+ * Three platforms connect here, all by hand: YouTube's three OAuth2 values are created in the Google
+ * Cloud console; Instagram and Threads credentials are minted in Meta's OAuth flow elsewhere and
+ * pasted in (no in-app redirect — design decision 1). TikTok has no credential here by design.
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { currentRequest } from "@/auth/current";
 import { ChannelConnect } from "@/components/channel-connect";
+import { ChannelDisconnect } from "@/components/channel-disconnect";
 import { repository } from "@/db/repository";
 
 export const dynamic = "force-dynamic";
@@ -62,16 +64,24 @@ export default async function ChannelsPage() {
                 </span>
                 <span className="text-sm text-zavron-ink">{channel.label ?? channel.accountRef}</span>
                 <span className="font-mono text-[10px] text-zavron-muted">{channel.accountRef}</span>
-                <span
-                  className={`ml-auto font-mono text-[10px] uppercase tracking-[0.14em] ${
-                    channel.status === "reauth_required" ? "text-[#fbbf24]" : "text-zavron-muted"
-                  }`}
-                >
-                  {channel.status === "reauth_required"
-                    ? "reconnect required"
-                    : channel.status === "active"
-                      ? "connected"
-                      : "disabled"}
+                <span className="ml-auto flex flex-wrap items-baseline gap-3">
+                  <span
+                    className={`font-mono text-[10px] uppercase tracking-[0.14em] ${
+                      channel.status === "reauth_required" ? "text-[#fbbf24]" : "text-zavron-muted"
+                    }`}
+                  >
+                    {channel.status === "reauth_required"
+                      ? "reconnect required"
+                      : channel.status === "active"
+                        ? "connected"
+                        : "disabled"}
+                  </span>
+                  {owner ? (
+                    <ChannelDisconnect
+                      channelId={channel.id}
+                      label={channel.label ?? channel.accountRef}
+                    />
+                  ) : null}
                 </span>
               </li>
             ))}

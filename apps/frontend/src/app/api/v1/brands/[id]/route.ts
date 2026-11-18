@@ -4,34 +4,15 @@
  * A brand in another workspace is `404`, not `403`: telling the caller "it exists but is not yours"
  * leaks the existence of other tenants' data.
  */
-import { z } from "zod";
 import { resolveContext } from "@/auth/context";
 import { repository } from "@/db/repository";
 import { fail, ok, toErrorResponse } from "@/lib/api";
 import { getBindings } from "@/lib/bindings";
+import { patchBrandSchema } from "@/lib/brand-schema";
 import type { WorkerEnv } from "@/lib/env";
 import { assertCan } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
-
-const patchSchema = z
-  .object({
-    name: z.string().min(1).max(80).optional(),
-    handle: z.string().max(60).nullable().optional(),
-    voice: z
-      .object({
-        tone: z.string().max(400),
-        banned: z.array(z.string().max(60)).max(40).optional(),
-      })
-      .optional(),
-    colors: z
-      .object({
-        accent: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-        plate: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      })
-      .optional(),
-  })
-  .refine((value) => Object.keys(value).length > 0, { message: "empty patch" });
 
 export async function PATCH(request: Request, params: { params: Promise<{ id: string }> }) {
   const env = (await getBindings()) as WorkerEnv | null;
@@ -41,7 +22,7 @@ export async function PATCH(request: Request, params: { params: Promise<{ id: st
   if (!resolved) return fail(401, "unauthenticated");
 
   const body = await request.json().catch(() => null);
-  const parsed = patchSchema.safeParse(body);
+  const parsed = patchBrandSchema.safeParse(body);
   if (!parsed.success) return fail(422, "invalid_brand_patch", parsed.error.flatten());
 
   try {

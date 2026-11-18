@@ -28,8 +28,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <main className="mx-auto max-w-2xl px-6 py-24">
         <h1 className="text-xl font-medium text-zavron-ink">No Worker bindings</h1>
         <p className="mt-3 text-sm leading-relaxed text-zavron-muted">
-          This page needs D1. Run <code className="text-zavron-ink">pnpm dev:vinext</code> — plain{" "}
-          <code className="text-zavron-ink">pnpm dev</code> has no Worker and therefore no database.
+          This page needs D1. Run <code className="text-zavron-ink">pnpm dev</code> — the Worker runtime
+          with a database binding; <code className="text-zavron-ink">pnpm dev:next</code> renders pages
+          without one.
         </p>
       </main>
     );
@@ -71,6 +72,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </Link>
             <Link href="/intake" className="text-zavron-muted transition-colors hover:text-zavron-ink">
               intake
+            </Link>
+            <Link href="/brands" className="text-zavron-muted transition-colors hover:text-zavron-ink">
+              brands
             </Link>
             <Link
               href="/channels"

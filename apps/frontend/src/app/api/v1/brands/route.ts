@@ -5,44 +5,15 @@
  * reads the tenant from that context, never from the body. A `workspaceId` in the payload is ignored
  * by construction — there is no parameter to pass it through.
  */
-import { z } from "zod";
 import { resolveContext } from "@/auth/context";
 import { repository } from "@/db/repository";
 import { created, fail, ok, toErrorResponse } from "@/lib/api";
 import { getBindings } from "@/lib/bindings";
+import { createBrandSchema } from "@/lib/brand-schema";
 import type { WorkerEnv } from "@/lib/env";
 import { assertCan } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
-
-/**
- * Theme tokens are the brand's own palette, exactly as `brands/<slug>/brand.json` records it:
- * `accent` plus two background plates. `plate` is accepted as an alias for `bg0` so an older kit
- * still validates.
- */
-const colorBlock = z.object({
-  accent: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-  bg0: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  bg1: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  plate: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-});
-
-const voiceBlock = z.object({
-  tone: z.string().max(400),
-  banned: z.array(z.string().max(60)).max(40).optional(),
-});
-
-const createBrandSchema = z.object({
-  slug: z
-    .string()
-    .min(2)
-    .max(40)
-    .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "lowercase letters, digits and single hyphens"),
-  name: z.string().min(1).max(80),
-  handle: z.string().max(60).optional(),
-  voice: voiceBlock.optional(),
-  colors: colorBlock.optional(),
-});
 
 export async function GET(request: Request) {
   const env = (await getBindings()) as WorkerEnv | null;
